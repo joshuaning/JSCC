@@ -1,0 +1,30 @@
+name: JSCC
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - jupyter
+  - jupyterlab
+  - notebook
+  - ipython
+  - ipykernel
+  - tqdm
+  - requests
+  - pyyaml
+  - pip
+  - pytorch
+  - torchvision
+  - torchaudio
+  - torchinfo
+  - pip:
+      - bert4keras
+      - sklearn
+
