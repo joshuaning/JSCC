@@ -13,7 +13,12 @@ parser.add_argument('--output-train-dir', default='dataset/da/train_data_da.pkl'
 parser.add_argument('--output-test-dir', default='dataset/da/test_data_da.pkl', type=str)
 parser.add_argument('--output-vocab', default='dataset/da/vocab_da.json', type=str)
 
-
+SPECIAL_TOKENS = {
+  '<PAD>': 0,
+  '<START>': 1,
+  '<END>': 2,
+  '<UNK>': 3,
+}
 
 def clean_string(s):
     '''
@@ -62,7 +67,7 @@ def trim_data(cleaned, MIN_LENGTH=4, MAX_LENGTH=50):
 
 def clean_file(fname):
     '''
-    preprocess a files
+    preprocess a files by cleaning and trimming
     '''
 
     file = open(fname, 'r', encoding='utf8')
@@ -74,6 +79,10 @@ def clean_file(fname):
     return(clean_data)
 
 def clean_folder(folder_name):
+    '''
+    return all unique, useable sentences in folder_name as a list
+    '''
+
     unique_sentences = set()
     for file in tqdm(os.listdir(folder_name)):
         if file.endswith('.txt'): 
@@ -82,14 +91,65 @@ def clean_folder(folder_name):
     
     return list(unique_sentences)
 
+def tokenize(s, delim=' ',  add_start_token=True, add_end_token=True, punct_to_remove=None):
+    '''
+    return a list of tokens by splitting s on the specified delim. 
+    Option to remove punctuation and add SOS and EOS token
+    '''
+    
+    if punct_to_remove is not None:
+        for punc in punct_to_remove:
+            s = s.replace(punc, '')
+            s = re.sub(r'\s+', r' ', s)
+    
+    tokens = s.split(delim)
+    if add_start_token:
+        tokens.insert(0, '<START>')
+    if add_end_token:
+        tokens.append('<END>')
+    return tokens
+
+def build_vocab(sequences, token_to_idx = SPECIAL_TOKENS, delim=' ', punct_to_remove=None):
+    '''
+    returns a dictionary with token as the key and index as the value.
+    token with smaller index has higher apparance freqeuency in the dataset.
+    '''
+    
+    token_to_count = {}
+    for seq in sequences:
+      seq_tokens = tokenize(seq, delim=delim, punct_to_remove=punct_to_remove)
+      for token in seq_tokens:
+        if token not in token_to_count:
+          token_to_count[token] = 0
+        token_to_count[token] += 1
+
+    # sort by frequency
+    for token, _ in sorted(token_to_count.items(),  key=lambda x: x[1], reverse=True):
+        if token not in SPECIAL_TOKENS.keys():
+            token_to_idx[token] = len(token_to_idx)
+
+    return token_to_idx
 
 if __name__ == '__main__':
+    print("extracting sentences---------------------------")
     args = parser.parse_args()
     sentences = clean_folder(args.input_data_dir)
     print("there are {} unique sentences. \n\n".format(len(sentences)))
 
-    for i in range(10):
-        print(sentences[i])
+    # build & save vocabulary
+    print("building vocab---------------------------")
+    token_to_idx = build_vocab(sentences)
+    vocab = {'token_to_idx': token_to_idx}
+    print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
+    if args.output_vocab is not '':
+        with open(args.output_vocab, 'w') as f:
+            json.dump(vocab, f)
+    print("vocab saved to {}".format(args.output_vocab))
+
+
+
+
+
 
 
 
