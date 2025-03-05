@@ -6,12 +6,15 @@ import argparse
 import os
 import json
 from tqdm import tqdm
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input-data-dir', default='C:/Users/Joshua Ning/Documents/Dataset/europarl/txt/da', type=str)
 parser.add_argument('--output-train-dir', default='dataset/da/train_data_da.pkl', type=str)
 parser.add_argument('--output-test-dir', default='dataset/da/test_data_da.pkl', type=str)
 parser.add_argument('--output-vocab', default='dataset/da/vocab_da.json', type=str)
+parser.add_argument('--train-test-split', default=0.9, type=float)
+
 
 SPECIAL_TOKENS = {
   '<PAD>': 0,
@@ -103,6 +106,7 @@ def tokenize(s, delim=' ',  add_start_token=True, add_end_token=True, punct_to_r
             s = re.sub(r'\s+', r' ', s)
     
     tokens = s.split(delim)
+    tokens = list(filter(None, tokens)) #remove empty string
     if add_start_token:
         tokens.insert(0, '<START>')
     if add_end_token:
@@ -131,21 +135,50 @@ def build_vocab(sequences, token_to_idx = SPECIAL_TOKENS, delim=' ', punct_to_re
     return token_to_idx
 
 if __name__ == '__main__':
+    np.random.seed(1)
+
     print("extracting sentences---------------------------")
     args = parser.parse_args()
     sentences = clean_folder(args.input_data_dir)
     print("there are {} unique sentences. \n\n".format(len(sentences)))
 
-    # build & save vocabulary
+    # build & save vocabulary:
+    # TODO: Ideally only build vocab on the training set
     print("building vocab---------------------------")
     token_to_idx = build_vocab(sentences)
     vocab = {'token_to_idx': token_to_idx}
     print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
-    if args.output_vocab is not '':
+    if args.output_vocab is not None:
         with open(args.output_vocab, 'w') as f:
             json.dump(vocab, f)
     print("vocab saved to {}".format(args.output_vocab))
 
+    # encode
+    print("Begin to encode sentences")
+    results = []
+    for seq in tqdm(sentences):
+        words = tokenize(seq)
+        tokens = [token_to_idx[word] for word in words]
+        results.append(tokens)
+    # np.array(results)
+
+    # select and write data for training and testing
+    print('Writing Data---------------------------")')
+    num_train = round(args.train_test_split * len(results))
+
+    mask = np.zeros(len(results), dtype=bool)
+    mask[np.random.choice(len(results), num_train, replace=False)] = True
+
+    train_data = [results[i] for i in range(len(results)) if mask[i]]
+    test_data = [results[i] for i in range(len(results)) if not mask[i]]
+
+    print("amount of sentences in training set: {}".format(len(train_data)))
+    print("amount of sentences in testing set: {}".format(len(test_data)))
+
+    with open(args.output_train_dir, 'wb') as f:
+        pickle.dump(train_data, f)
+    with open(args.output_test_dir, 'wb') as f:
+        pickle.dump(test_data, f)
 
 
 
