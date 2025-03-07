@@ -247,10 +247,3 @@ if __name__ == '__main__':
 
         lang_counter += 1
 
-
-
-
-
-
-
-
