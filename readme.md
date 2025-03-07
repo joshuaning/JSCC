@@ -15,3 +15,12 @@ This modularity can also be used for simultanous translation to multiple languag
 
 
 Authors: Joshua Ning, Jason Ning
+
+
+get the dataset:
+The dataset is Europarl from hugging face [https://huggingface.co/datasets/Helsinki-NLP/europarl]
+Get it by using the following command:
+```
+    git lfs install  
+    git clone https://huggingface.co/datasets/Helsinki-NLP/europarl  
+```
