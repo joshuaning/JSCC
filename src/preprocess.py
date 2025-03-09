@@ -167,7 +167,7 @@ def tokenize(s, delim=' ',  add_start_token=True, add_end_token=True, punct_to_r
         tokens.append('<END>')
     return tokens
 
-def build_vocab(sequences, token_to_idx = SPECIAL_TOKENS, delim=' ', punct_to_remove=None):
+def build_vocab(sequences, token_to_idx = {}, delim=' ', punct_to_remove=None):
     '''
     returns a dictionary with token as the key and index as the value.
     token with smaller index has higher apparance freqeuency in the dataset.
@@ -214,7 +214,10 @@ if __name__ == '__main__':
 
         # build & save vocabulary:
         print("building vocab for {} ---------------------------".format(curr_lang))
-        token_to_idx = build_vocab(sentences)
+        tkns = SPECIAL_TOKENS.copy()
+        token_to_idx = {}
+        vocab = {}
+        token_to_idx = build_vocab(sentences, token_to_idx=tkns)
         vocab = {'token_to_idx': token_to_idx}
         print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
         with open(curr_out_vocab_dir, 'w') as f:
