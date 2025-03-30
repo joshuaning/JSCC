@@ -7,13 +7,16 @@ import os
 import json
 from tqdm import tqdm
 import numpy as np
+import pyarrow.parquet as pa
+import pandas as pd
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input-data-dir', default='C:/Users/Joshua Ning/Documents/Dataset/europarl/txt/da', type=str)
-parser.add_argument('--output-train-dir', default='dataset/da/train_data_da.pkl', type=str)
-parser.add_argument('--output-test-dir', default='dataset/da/test_data_da.pkl', type=str)
-parser.add_argument('--output-vocab', default='dataset/da/vocab_da.json', type=str)
+parser.add_argument('--input-data-dir', default='C:/Users/Joshua Ning/Documents/Dataset/europarl', type=str)
+parser.add_argument('--output-dir', default='dataset/', type=str)
 parser.add_argument('--train-test-split', default=0.9, type=float)
+parser.add_argument('--lang1', default='da', type=str)
+parser.add_argument('--lang2', default='en', type=str)
+
 
 
 SPECIAL_TOKENS = {
@@ -44,7 +47,7 @@ def clean_string(s):
     s = re.sub(r'[()]', '', s)
 
     # add white space before and after !@#$%^&*_+:"":;,./?<>-
-    s = re.sub(r'([!@#$%^&*_+"":;,./?<>-])', r' \1 ', s)
+    s = re.sub(r'([!@#$%^&*_+":;,./?<>`~\'\-])', r' \1 ', s)
 
     #add white space before each number
     s = re.sub(r'(?<=\d)(?=\d)', r' ', s)
@@ -94,6 +97,57 @@ def clean_folder(folder_name):
     
     return list(unique_sentences)
 
+
+def clean_parquets(full_file_path, lang1, lang2, unique_lang1, unique_lang2):
+    ul1 = unique_lang1
+    ul2 = unique_lang2
+    clean_lang1_sentences = []
+    clean_lang2_sentences = []
+    table = pa.read_table(full_file_path)
+    df = table.to_pandas()
+
+    for i in tqdm(range(len(df))):
+
+        lang1_clean = clean_string(df.loc[i]['translation'][lang1])
+        lang2_clean = clean_string(df.loc[i]['translation'][lang2])
+
+        lang1_clean = ''.join(trim_data([lang1_clean]))
+        lang2_clean = ''.join(trim_data([lang2_clean]))
+
+        if lang1_clean in ul1 or lang1_clean == '': continue # check for duplicates
+        if lang2_clean in ul2 or lang2_clean == '': continue # check for duplicates
+
+        ul1.update([lang1_clean])
+        ul2.update([lang2_clean])
+
+        clean_lang1_sentences.append(lang1_clean)
+        clean_lang2_sentences.append(lang2_clean)
+
+    return clean_lang1_sentences, clean_lang2_sentences, ul1, ul2
+
+
+
+def clean_parquets_in_folder(folder_name, lang1, lang2):
+    unique_lang1 = set()
+    unique_lang2 = set()
+    clean_lang1_sentences = []
+    clean_lang2_sentences = []
+
+    for file in os.listdir(folder_name):
+        if file.endswith('.parquet'): 
+            fpath = os.path.join(folder_name, file)
+            print("cleaning data at {}".format(fpath))
+            l1sent, l2sent, unique_lang1, unique_lang2 = clean_parquets(fpath, lang1, lang2, 
+                                                                        unique_lang1, unique_lang2)
+            clean_lang1_sentences += l1sent
+            clean_lang2_sentences += l2sent
+
+            
+    print("unique lang1 set has lenth = ", len(unique_lang1))
+    print("unique lang2 set has lenth = ", len(unique_lang2))
+
+    return clean_lang1_sentences, clean_lang2_sentences
+
 def tokenize(s, delim=' ',  add_start_token=True, add_end_token=True, punct_to_remove=None):
     '''
     return a list of tokens by splitting s on the specified delim. 
@@ -113,7 +167,7 @@ def tokenize(s, delim=' ',  add_start_token=True, add_end_token=True, punct_to_r
         tokens.append('<END>')
     return tokens
 
-def build_vocab(sequences, token_to_idx = SPECIAL_TOKENS, delim=' ', punct_to_remove=None):
+def build_vocab(sequences, token_to_idx = {}, delim=' ', punct_to_remove=None):
     '''
     returns a dictionary with token as the key and index as the value.
     token with smaller index has higher apparance freqeuency in the dataset.
@@ -136,56 +190,63 @@ def build_vocab(sequences, token_to_idx = SPECIAL_TOKENS, delim=' ', punct_to_re
 
 if __name__ == '__main__':
     np.random.seed(1)
+    args = parser.parse_args()
+
+    lang_names = [args.lang1,  args.lang2]
+    data_folder_name = os.path.join(args.input_data_dir, '-'.join(lang_names))
+
 
     print("extracting sentences---------------------------")
-    args = parser.parse_args()
-    sentences = clean_folder(args.input_data_dir)
-    print("there are {} unique sentences. \n\n".format(len(sentences)))
+    sentence_pairs = clean_parquets_in_folder(data_folder_name, args.lang1, args.lang2)
 
-    # build & save vocabulary:
+    print("there are {} unique sentences in {}. \n\n".format(len(sentence_pairs[0]), args.lang1))
+    print("there are {} unique sentences in {}. \n\n".format(len(sentence_pairs[1]), args.lang2))
+
+    
     # TODO: Ideally only build vocab on the training set
-    print("building vocab---------------------------")
-    token_to_idx = build_vocab(sentences)
-    vocab = {'token_to_idx': token_to_idx}
-    print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
-    if args.output_vocab is not None:
-        with open(args.output_vocab, 'w') as f:
+    # process and save files for each language
+    lang_counter = 0
+    for sentences in sentence_pairs:
+        curr_lang = lang_names[lang_counter]
+        curr_out_train_dir = os.path.join(args.output_dir, curr_lang, 'train_data.pkl')
+        curr_out_test_dir = os.path.join(args.output_dir, curr_lang, 'test_data.pkl')
+        curr_out_vocab_dir = os.path.join(args.output_dir, curr_lang, 'vocab.json')
+
+        # build & save vocabulary:
+        print("building vocab for {} ---------------------------".format(curr_lang))
+        tkns = SPECIAL_TOKENS.copy()
+        token_to_idx = {}
+        vocab = {}
+        token_to_idx = build_vocab(sentences, token_to_idx=tkns)
+        vocab = {'token_to_idx': token_to_idx}
+        print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
+        with open(curr_out_vocab_dir, 'w') as f:
             json.dump(vocab, f)
-    print("vocab saved to {}".format(args.output_vocab))
+        print("vocab saved to {}".format(curr_out_vocab_dir))
 
-    # encode
-    print("Begin to encode sentences")
-    results = []
-    for seq in tqdm(sentences):
-        words = tokenize(seq)
-        tokens = [token_to_idx[word] for word in words]
-        results.append(tokens)
-    # np.array(results)
+        # encode
+        print("Begin to encode sentences")
+        results = []
+        for seq in tqdm(sentences):
+            words = tokenize(seq)
+            tokens = [token_to_idx[word] for word in words]
+            results.append(tokens)
+        # np.array(results)
 
-    # select and write data for training and testing
-    print('Writing Data---------------------------")')
-    num_train = round(args.train_test_split * len(results))
+        # select and write data for training and testing
+        print('Writing Data---------------------------")')
+        num_train = round(args.train_test_split * len(results))
 
-    mask = np.zeros(len(results), dtype=bool)
-    mask[np.random.choice(len(results), num_train, replace=False)] = True
+        train_data = results[0:num_train]
+        test_data = results[num_train:]
 
-    train_data = [results[i] for i in range(len(results)) if mask[i]]
-    test_data = [results[i] for i in range(len(results)) if not mask[i]]
+        print("amount of sentences in  training set for {} : {}".format(curr_lang, len(train_data)))
+        print("amount of sentences in testing set for {} : {}".format(curr_lang, len(test_data)))
 
-    print("amount of sentences in training set: {}".format(len(train_data)))
-    print("amount of sentences in testing set: {}".format(len(test_data)))
+        with open(curr_out_train_dir, 'wb') as f:
+            pickle.dump(train_data, f)
+        with open(curr_out_test_dir, 'wb') as f:
+            pickle.dump(test_data, f)
 
-    with open(args.output_train_dir, 'wb') as f:
-        pickle.dump(train_data, f)
-    with open(args.output_test_dir, 'wb') as f:
-        pickle.dump(test_data, f)
-
-
-
-
-
-
-
-
-
+        lang_counter += 1
 
