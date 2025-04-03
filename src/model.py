@@ -4,6 +4,7 @@
 import torch
 import torch.nn as nn
 import math
+import torch.nn.functional as F
 
 
 class InputEmbeddings(nn.Module):
@@ -78,7 +79,7 @@ class FeedForward(nn.Module):
         # input sentence (batch, seq_len, d_model)
         # linear1: --> (batch, seq_len, d_ff) --> linear2: --> (batch, seq_len, d_model)
 
-        return self.linear2(self.dropout(torch.relu(self.linear1(x))))
+        return self.linear2(self.dropout(F.relu(self.linear1(x))))
 
 
 # d_model have to be divisible by h (# of heads)
@@ -219,7 +220,64 @@ class ProjectionLayer(nn.Module):
         # (batch, seq_len, d_model) --> (batch, seq_len, vocab_size)
 
         return torch.log_softmax(self.proj(x), dim=-1)
+
+
+### --- This section is dedicated for Channel related netowrks --- ###
+
+class ChannelEncoder(nn.Module):
+    def __init__(self, d_model, l1_size=256, out_size=16):
+        super().__init__()
+        
+        self.l1 = nn.Sequential(nn.Linear(d_model, l1_size),
+                                nn.ReLU(inplace=True))
+        self.l2 = nn.Linear(l1_size, out_size)
+
+    def forward(self,x):
+        x = self.l1(x)
+        x = self.l2(x)
+
+        return x
+
+
+
+class ChannelDecoder(nn.Module):
+    def __init__(self, in_size, l1_size, l2_size):
+        super().__init__()
+
+        self.l1 = nn.Linear(in_size, l1_size)
+        self.l2 = nn.Linear(l1_size, l2_size)
+        self.l3 = nn.Linear(l2_size, in_size)
+
+        self.layernorm = nn.LayerNorm(l1_size, eps=1e-6)
+
+    def forward(self, x):
+        x1 = self.l1(x)
+        x = F.relu(x1)
+        x = self.l2(x)
+        x = F.relu(x)
+        x = self.l3(x)
+
+        output = self.layernorm(x1 + x)
+
+        return output
     
+#AWGN Channel, different from the original implementation, not sure if it will work
+class AWGNChannel(nn.Module):
+
+    def __init__(self, noise_variance):
+        super().__init__()
+
+        self.noise_variance = noise_variance
+
+    def forward(self, x):
+        noise = torch.normal(0, self.noise_variance, size=x.shape)
+        return x + noise
+
+## --- END SECTION --- ###
+
+
+
+
 class Transformer(nn.Module):
 
     def __init__(self, encoder: Encoder, decoder: Decoder, src_embedding: InputEmbeddings, 
