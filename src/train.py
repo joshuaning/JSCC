@@ -6,7 +6,7 @@ from functools import partial
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--MAX-LENGTH', default=52, type=int)
+parser.add_argument('--MAX-LENGTH', default=27, type=int)
 parser.add_argument('--batch-size', default=8, type=int)
 parser.add_argument('--num-lang', default=2, type=int)
 
@@ -27,9 +27,11 @@ if __name__ == '__main__':
     for data in test_loader:
         for sentences in data:
             if i < 1:
-                print(sentences[0][0].cpu().numpy())
+                # print(sentences[0][0].cpu().numpy())
                 print(ttc_en.idx2text(sentences[0]))
                 print(ttc_da.idx2text(sentences[1]))
+                # print(len(sentences[0]))
+                # print(len(sentences[1]))
             else:
                 break
         i += 1

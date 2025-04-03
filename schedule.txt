@@ -1,0 +1,7 @@
+3/30
+1. load our data (same language) into DeepsSC with MINE and check performance
+2. load different language data & implement different loss function on DeepsSC
+
+4/3 - 4/4
+3. connect our net with the same interface as DeepsSC
+4. train our net

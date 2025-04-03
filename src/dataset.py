@@ -28,7 +28,7 @@ class EuroparlDataset(Dataset):
     def __len__(self):
         return len(self.data_src)
     
-def collate(batch, maxNumToken = 52, numlang = 2):
+def collate(batch, maxNumToken = 27, numlang = 2):
     batch_size = len(batch)
     #create padding (assume padding token has index = 0)
     padded = np.zeros((batch_size, numlang, maxNumToken), dtype=np.int64)
