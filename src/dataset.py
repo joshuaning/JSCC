@@ -59,5 +59,8 @@ class TextTokenConverter():
         for token in input_token:
             output_idx.append(self.token_to_idx[token])
         return output_idx
+    
+    def get_pad_idx(self):
+        return self.token_to_idx["<PAD>"]
 
 
