@@ -19,8 +19,31 @@ parser.add_argument('--num-epoch', default=80, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
 
 def loss_fn(pred, label, pad_idx, criterion):
-    loss = criterion(pred, label) * (label != pad_idx) #same type?
+    loss = criterion(pred, label) * (label != pad_idx).to(torch.float32)
     return loss.mean()
+
+def generate_mask(inputs, labels, pad_idx):
+    '''
+    inputs of shape [batch_size, seq_len]
+    labels of shape [batch_size, labels]
+
+    src_mask of shape [batch_size, 1, seq_len]
+    combined_mask of shape [batch_size, seq_len, seq_len]
+
+    in the masks, 1 represent masked, 0 represent transparent 
+    '''
+
+    src_mask = (inputs == pad_idx).unsqueeze(1).to(torch.float32)
+    lab_mask = (labels == pad_idx).unsqueeze(1).to(torch.float32)
+    attn_size = (1, input.shape()[-1], input.shape()[-1])
+
+    #lower triangle is masked for causality
+    causual_mask = torch.triu(torch.ones(attn_size), k=1).to(torch.float32)
+    combined_mask = torch.max(lab_mask, causual_mask)
+
+    return src_mask, combined_mask
+
+
 
 
 def train_iter(model, loader, pad_idx, device, opt, loss_fn):
@@ -37,6 +60,10 @@ def train_iter(model, loader, pad_idx, device, opt, loss_fn):
         inputs, labels = data[:, 0, :], data[:, 1, :]
         inputs.contiguous().to(device)
         labels.contiguous().to(device)
+        src_mask, combined_mask = generate_mask(inputs, labels, pad_idx)
+        src_mask.contiguous().to(device)
+        combined_mask.contiguous().to(device)
+
 
         pred = model(inputs)
 
