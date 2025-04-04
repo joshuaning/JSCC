@@ -4,6 +4,7 @@
 import torch
 import torch.nn as nn
 import math
+import torch.nn.functional as F
 
 
 class InputEmbeddings(nn.Module):
@@ -78,7 +79,7 @@ class FeedForward(nn.Module):
         # input sentence (batch, seq_len, d_model)
         # linear1: --> (batch, seq_len, d_ff) --> linear2: --> (batch, seq_len, d_model)
 
-        return self.linear2(self.dropout(torch.relu(self.linear1(x))))
+        return self.linear2(self.dropout(F.relu(self.linear1(x))))
 
 
 # d_model have to be divisible by h (# of heads)
@@ -90,7 +91,7 @@ class MultiHeadAttention(nn.Module):
         self.d_model = d_model
         self.h = h
         assert d_model % h == 0 , "d_model is not divisible by h"
-        self.dropout = torch.dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
 
         self.d_k = d_model // h
 
@@ -122,10 +123,9 @@ class MultiHeadAttention(nn.Module):
         value = self.w_v(v)         #(batch, seq_len, d_model) --> (batch, seq_len, d_model)
 
         # (Batch, seq_len, d_model) --> (batch, h, seq_len, d_k)
-        # maybe problem here 33:23
-        query = query.view(query.shape[0], self.h, query.shape[1], self.d_k)
-        key = key.view(key.shape[0], self.h, key.shape[1], self.d_k)
-        value = value.view(value.shape[0], self.h, value.shape[1], self.d_k)
+        query = query.view(query.shape[0], query.shape[1], self.h, self.d_k).transpose(1,2)
+        key = key.view(key.shape[0], key.shape[1], self.h, self.d_k).transpose(1,2)
+        value = value.view(value.shape[0], value.shape[1], self.h, self.d_k).transpose(1,2)
 
         x, self.attention_scores = MultiHeadAttention.attention(query, key, value, mask, self.dropout)
 
@@ -171,10 +171,10 @@ class Encoder(nn.Module):
         self.layers = layers
         self.norm = LayerNormalization()
 
-        def forward(self,x,mask):
-            for layer in self.layers:
-                x = layer(x, mask)          #each layer is a encoder
-            return self.norm(x)
+    def forward(self,x,mask):
+        for layer in self.layers:
+            x = layer(x, mask)          #each layer is a encoder
+        return self.norm(x)
         
 class DecoderBlock(nn.Module):
 
@@ -187,16 +187,16 @@ class DecoderBlock(nn.Module):
         self.feed_forward_block = feed_forward_block
         self.residual_connections = nn.ModuleList([ResidualConnection(dropout) for _ in range (3)])
 
-        def forward(self, x, encoder_x, src_mask, tgt_mask):
-                                                    #target mask is decoder mask
-        
-            x = self.residual_connections[0](x, lambda x: self.self_attention_block(x,x,x, tgt_mask))
+    def forward(self, x, encoder_x, src_mask, tgt_mask):
+                                                #target mask is decoder mask
+    
+        x = self.residual_connections[0](x, lambda x: self.self_attention_block(x,x,x, tgt_mask))
 
-            x = self.residual_connections[1](x, lambda x: self.cross_attention_block(x, encoder_x, encoder_x, src_mask))
+        x = self.residual_connections[1](x, lambda x: self.cross_attention_block(x, encoder_x, encoder_x, src_mask))
 
-            x = self.residual_connections[2](x, self.feed_forward_block)
+        x = self.residual_connections[2](x, self.feed_forward_block)
 
-            return x
+        return x
         
 class Decoder(nn.Module):
     def __init__(self, layers: nn.ModuleList):
@@ -204,10 +204,10 @@ class Decoder(nn.Module):
         self.layers = layers
         self.norm = LayerNormalization()
 
-        def forward(self,x,encoder_x, src_mask, tgt_mask):
-            for layer in self.layers:
-                x = layer(x, encoder_x, src_mask, tgt_mask)     #each layer is a decoder
-            return self.norm(x)
+    def forward(self,x,encoder_x, src_mask, tgt_mask):
+        for layer in self.layers:
+            x = layer(x, encoder_x, src_mask, tgt_mask)     #each layer is a decoder
+        return self.norm(x)
 
 class ProjectionLayer(nn.Module):
 
@@ -219,7 +219,178 @@ class ProjectionLayer(nn.Module):
         # (batch, seq_len, d_model) --> (batch, seq_len, vocab_size)
 
         return torch.log_softmax(self.proj(x), dim=-1)
+
+
+### --- This section is dedicated for Channel related netowrks --- ###
+
+def PowerNormalize(x):
     
+    x_square = torch.mul(x, x)
+    power = torch.mean(x_square).sqrt()
+    if power > 1:
+        x = torch.div(x, power)
+    
+    return x
+
+class ChannelEncoder(nn.Module):
+    def __init__(self, d_model, l1_size=256, out_size=16):
+        super().__init__()
+        
+        self.l1 = nn.Sequential(nn.Linear(d_model, l1_size),
+                                nn.ReLU(inplace=True))
+        self.l2 = nn.Linear(l1_size, out_size)
+
+    def forward(self,x):
+        x = self.l1(x)
+        x = self.l2(x)
+
+        return PowerNormalize(x)
+
+
+class ChannelDecoder(nn.Module):
+    def __init__(self, in_size, l1_size, l2_size):
+        super().__init__()
+
+        self.l1 = nn.Linear(in_size, l1_size)
+        self.l2 = nn.Linear(l1_size, l2_size)
+        self.l3 = nn.Linear(l2_size, in_size)
+
+        self.layernorm = nn.LayerNorm(l1_size, eps=1e-6)
+
+    def forward(self, x):
+        x1 = self.l1(x)
+        x = F.relu(x1)
+        x = self.l2(x)
+        x = F.relu(x)
+        x = self.l3(x)
+
+        output = self.layernorm(x1 + x)
+
+        return output
+    
+    
+#AWGN Channel, different from the original implementation, not sure if it will work
+class AWGNChannel(nn.Module):
+
+    def __init__(self, noise_variance):
+        super().__init__()
+
+        self.noise_variance = noise_variance
+
+    def forward(self, x):
+        noise = torch.normal(0, self.noise_variance, size=x.shape)
+        return x + noise
+
+## --- END SECTION --- ###    
+
+## --- An Attempt to Create DeepSC --- ##
+
+class DeepSC(nn.Module):
+
+    def __init__(self, encoder: Encoder, decoder: Decoder, src_embedding: InputEmbeddings, 
+                 tgt_embedding: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding,
+                 projection_layer: ProjectionLayer, channel_encoder: ChannelEncoder, 
+                 channel_decoder: ChannelDecoder, channel: AWGNChannel):
+    # src embedding and tgt embedding are the embedding for the different languages
+    # if the same language, embeddings are the same
+        
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.src_embedding = src_embedding
+        self.tgt_embedding = tgt_embedding
+        self.src_pos = src_pos
+        self.tgt_pos = tgt_pos
+        self.projection_layer = projection_layer
+        self.channel_encoder = channel_encoder
+        self.channel_decoder = channel_decoder
+        self.channel = channel
+
+
+    def encode(self, src, src_mask):
+        src = self.src_embedding(src)
+        src = self.src_pos(src)
+        
+        return self.encoder(src, src_mask)
+    
+    def channel_encode(self, encoder_out):
+        return self.channel_encoder(encoder_out)
+    
+    def channel_transmit(self, in_sig):
+        return self.channel(in_sig)
+    
+    def channel_decode(self, in_sig):
+        return self.channel_decoder(in_sig)
+    
+    def decode(self, encoder_out, src_mask, tgt, tgt_mask):
+        tgt = self.tgt_embedding(tgt)
+        tgt = self.tgt_pos(tgt)
+
+        return self.decoder(tgt, encoder_out, src_mask, tgt_mask)
+    
+    def project(self, x):
+        return self.projection_layer(x)
+    
+
+def Build_DeepSC(src_vocab_size: int, tgt_vocab_size: int,
+                     src_seq_len: int, tgt_seq_len: int,
+                     d_model:int=512, N:int=6, h:int=8, dropout:float=0.1,
+                     d_ff:int=2048, noise_variance:float = 0.1)->DeepSC:
+    
+    #create the embedding layers
+    src_embed = InputEmbeddings(d_model, src_vocab_size)
+    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
+
+    #create the positional encoding layers  (They should be the same?)
+    src_pos = PositionalEncoding(d_model, src_seq_len, dropout)
+    tgt_pos = PositionalEncoding(d_model, tgt_seq_len, dropout)
+
+    #create the encoder blocks
+    encoder_blocks = []
+    for _ in range(N):
+        encoder_self_attention_block = MultiHeadAttention(d_model, h, dropout)
+        feed_forward_block = FeedForward(d_model, d_ff, dropout)
+        encoder_block = EncoderBlock(encoder_self_attention_block, feed_forward_block, dropout)
+        encoder_blocks.append(encoder_block)
+
+    #create the decoder blocks
+    decoder_blocks = []
+
+    for _ in range(N):
+        decoder_self_attention_block = MultiHeadAttention(d_model, h, dropout)
+        decoder_cross_attention_block = MultiHeadAttention(d_model, h, dropout)
+        feed_forward_block = FeedForward(d_model, d_ff, dropout)
+        decoder_block = DecoderBlock(decoder_self_attention_block, decoder_cross_attention_block, feed_forward_block, dropout)
+
+        decoder_blocks.append(decoder_block)
+
+    # create the encoder and the decoder
+    encoder = Encoder(nn.ModuleList(encoder_blocks))
+    decoder = Decoder(nn.ModuleList(decoder_blocks))
+
+    # create the projection layer
+    projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
+
+    # create channel related layers
+    channel_encoder = ChannelEncoder(d_model, l1_size=256, out_size=16)
+    awgn_channel = AWGNChannel(noise_variance=noise_variance)
+    channel_decoder = ChannelDecoder(in_size=16, l1_size=d_model, l2_size=512)
+
+    #create the whole transformer
+    deepsc = DeepSC(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, 
+                    projection_layer, channel_encoder, channel_decoder, awgn_channel)
+
+    # Init params
+    for p in deepsc.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+
+    return deepsc
+
+
+
+# Below is building a normal Transformer, we take some inspiration from this with building the DeepSC
+
 class Transformer(nn.Module):
 
     def __init__(self, encoder: Encoder, decoder: Decoder, src_embedding: InputEmbeddings, 
@@ -260,7 +431,7 @@ def BuildTransformer(src_vocab_size: int, tgt_vocab_size: int,
     
     #create the embedding layers
     src_embed = InputEmbeddings(d_model, src_vocab_size)
-    tgt_embed = InputEmbeddings(d_model, tgt_embed)
+    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
 
     #create the positional encoding layers  (They should be the same?)
     src_pos = PositionalEncoding(d_model, src_seq_len, dropout)
@@ -287,7 +458,7 @@ def BuildTransformer(src_vocab_size: int, tgt_vocab_size: int,
 
     # create the encoder and the decoder
     encoder = Encoder(nn.ModuleList(encoder_blocks))
-    decoder = Encoder(nn.ModuleList(decoder_blocks))
+    decoder = Decoder(nn.ModuleList(decoder_blocks))
 
     # create the projection layer
     projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
