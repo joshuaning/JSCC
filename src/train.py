@@ -46,7 +46,7 @@ def generate_mask(inputs, labels, pad_idx):
 
 
 
-def train_iter(model, loader, pad_idx, device, opt, loss_fn):
+def train_iter(model, loader, pad_idx, device, opt, loss_fn, criterion):
     '''
     Train iteration for DeepSC_translate
     returns the avg per patch training loss of current epoch
@@ -77,7 +77,7 @@ def train_iter(model, loader, pad_idx, device, opt, loss_fn):
     return loss / i
 
         
-def val_iter(model, loader, pad_idx, device, loss_fn):
+def val_iter(model, loader, pad_idx, device, loss_fn, criterion):
     '''
     Evalutate iteration for DeepSC_translate
     returns the avg per patch validation loss of current epoch
@@ -99,7 +99,7 @@ def val_iter(model, loader, pad_idx, device, loss_fn):
 
     return total_loss / i
 
-def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, args):
+def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, criterion, args):
     min_loss = 999999999999999
     now = datetime.now()
 
@@ -112,9 +112,9 @@ def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, a
         print("----------------- starting epoch {} -----------------".format(epoch))
         epoch_start_time = datetime.now()
 
-        train_loss = train_iter(model, train_loader, pad_idx, device, opt, loss_fn)
+        train_loss = train_iter(model, train_loader, pad_idx, device, opt, loss_fn, criterion)
         # TODO: train MI NET if needed
-        val_loss = val_iter(model, val_loader, pad_idx, device, loss_fn)
+        val_loss = val_iter(model, val_loader, pad_idx, device, loss_fn, criterion)
 
         #save model during training
         if(min_loss > val_loss): #save best performing
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     opt = torch.optim.Adam(model.parameters(),
                                  lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay = 5e-4)
     
-    train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, args)
+    train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, criterion, args)
 
 
     
