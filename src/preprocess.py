@@ -16,6 +16,9 @@ parser.add_argument('--output-dir', default='dataset/', type=str)
 parser.add_argument('--train-test-split', default=0.9, type=float)
 parser.add_argument('--lang1', default='da', type=str)
 parser.add_argument('--lang2', default='en', type=str)
+parser.add_argument('--MIN-LENGTH', default=4, type=int)
+parser.add_argument('--MAX-LENGTH', default=25, type=int)
+
 
 
 
@@ -60,7 +63,7 @@ def clean_string(s):
 
     return s
 
-def trim_data(cleaned, MIN_LENGTH=4, MAX_LENGTH=50):
+def trim_data(cleaned, MIN_LENGTH=4, MAX_LENGTH=25):
     '''
     ensure each sentence in cleaned is between token length 4-50
     '''
@@ -71,7 +74,7 @@ def trim_data(cleaned, MIN_LENGTH=4, MAX_LENGTH=50):
             trimed_lines.append(line)
     return trimed_lines
 
-def clean_file(fname):
+def clean_file(fname, MIN_LENGTH=4, MAX_LENGTH=25):
     '''
     preprocess a files by cleaning and trimming
     '''
@@ -80,11 +83,11 @@ def clean_file(fname):
     raw_data = file.read()
     sentences = raw_data.strip().split('\n')
     clean_data = [clean_string(data) for data in sentences]
-    clean_data = trim_data(clean_data)
+    clean_data = trim_data(clean_data, MIN_LENGTH=MIN_LENGTH, MAX_LENGTH=MAX_LENGTH)
     file.close()
     return(clean_data)
 
-def clean_folder(folder_name):
+def clean_folder(folder_name, MIN_LENGTH=4, MAX_LENGTH=25):
     '''
     return all unique, useable sentences in folder_name as a list
     '''
@@ -92,13 +95,15 @@ def clean_folder(folder_name):
     unique_sentences = set()
     for file in tqdm(os.listdir(folder_name)):
         if file.endswith('.txt'): 
-            process_sentences = clean_file(os.path.join(folder_name, file))
+            process_sentences = clean_file(os.path.join(folder_name, file),  
+                                           MIN_LENGTH=MIN_LENGTH, MAX_LENGTH=MAX_LENGTH)
             unique_sentences.update(process_sentences)
     
     return list(unique_sentences)
 
 
-def clean_parquets(full_file_path, lang1, lang2, unique_lang1, unique_lang2):
+def clean_parquets(full_file_path, lang1, lang2, unique_lang1, unique_lang2, 
+                   MIN_LENGTH=4, MAX_LENGTH=25):
     ul1 = unique_lang1
     ul2 = unique_lang2
     clean_lang1_sentences = []
@@ -111,8 +116,10 @@ def clean_parquets(full_file_path, lang1, lang2, unique_lang1, unique_lang2):
         lang1_clean = clean_string(df.loc[i]['translation'][lang1])
         lang2_clean = clean_string(df.loc[i]['translation'][lang2])
 
-        lang1_clean = ''.join(trim_data([lang1_clean]))
-        lang2_clean = ''.join(trim_data([lang2_clean]))
+        lang1_clean = ''.join(trim_data([lang1_clean], 
+                                        MIN_LENGTH=MIN_LENGTH, MAX_LENGTH=MAX_LENGTH))
+        lang2_clean = ''.join(trim_data([lang2_clean], 
+                                        MIN_LENGTH=MIN_LENGTH, MAX_LENGTH=MAX_LENGTH))
 
         if lang1_clean in ul1 or lang1_clean == '': continue # check for duplicates
         if lang2_clean in ul2 or lang2_clean == '': continue # check for duplicates
@@ -127,7 +134,7 @@ def clean_parquets(full_file_path, lang1, lang2, unique_lang1, unique_lang2):
 
 
 
-def clean_parquets_in_folder(folder_name, lang1, lang2):
+def clean_parquets_in_folder(folder_name, lang1, lang2, MIN_LENGTH=4, MAX_LENGTH=25):
     unique_lang1 = set()
     unique_lang2 = set()
     clean_lang1_sentences = []
@@ -137,8 +144,11 @@ def clean_parquets_in_folder(folder_name, lang1, lang2):
         if file.endswith('.parquet'): 
             fpath = os.path.join(folder_name, file)
             print("cleaning data at {}".format(fpath))
-            l1sent, l2sent, unique_lang1, unique_lang2 = clean_parquets(fpath, lang1, lang2, 
-                                                                        unique_lang1, unique_lang2)
+
+            l1sent, l2sent, unique_lang1, unique_lang2 = \
+            clean_parquets(fpath, lang1, lang2, unique_lang1, unique_lang2, 
+                           MIN_LENGTH=MIN_LENGTH, MAX_LENGTH=MAX_LENGTH)
+
             clean_lang1_sentences += l1sent
             clean_lang2_sentences += l2sent
 
@@ -197,7 +207,8 @@ if __name__ == '__main__':
 
 
     print("extracting sentences---------------------------")
-    sentence_pairs = clean_parquets_in_folder(data_folder_name, args.lang1, args.lang2)
+    sentence_pairs = clean_parquets_in_folder(data_folder_name, args.lang1, args.lang2,
+                                              args.MIN_LENGTH, args.MAX_LENGTH)
 
     print("there are {} unique sentences in {}. \n\n".format(len(sentence_pairs[0]), args.lang1))
     print("there are {} unique sentences in {}. \n\n".format(len(sentence_pairs[1]), args.lang2))
@@ -240,8 +251,8 @@ if __name__ == '__main__':
         train_data = results[0:num_train]
         test_data = results[num_train:]
 
-        print("amount of sentences in  training set for {} : {}".format(curr_lang, len(train_data)))
-        print("amount of sentences in testing set for {} : {}".format(curr_lang, len(test_data)))
+        print("# of sentences in  training set for {} : {}".format(curr_lang, len(train_data)))
+        print("# of sentences in testing set for {} : {}".format(curr_lang, len(test_data)))
 
         with open(curr_out_train_dir, 'wb') as f:
             pickle.dump(train_data, f)
