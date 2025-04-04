@@ -62,5 +62,8 @@ class TextTokenConverter():
     
     def get_pad_idx(self):
         return self.token_to_idx["<PAD>"]
+    
+    def get_vocab_size(self):
+        return len(self.token_to_idx.keys())
 
 

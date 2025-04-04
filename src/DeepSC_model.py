@@ -1,4 +1,4 @@
-# Following https://arxiv.org/abs/1706.03762 "Attention Is Al You Need"
+# Following https://arxiv.org/abs/1706.03762 "Attention Is All You Need"
 # and https://www.youtube.com/watch?v=ISNdQcPhsts&ab_channel=UmarJamil (with modifications)
 
 import torch
@@ -218,7 +218,7 @@ class ProjectionLayer(nn.Module):
     def forward(self,x):
         # (batch, seq_len, d_model) --> (batch, seq_len, vocab_size)
 
-        return torch.log_softmax(self.proj(x), dim=-1)
+        return self.proj(x)
 
 
 ### --- This section is dedicated for Channel related netowrks --- ###
@@ -253,7 +253,7 @@ class ChannelDecoder(nn.Module):
 
         self.l1 = nn.Linear(in_size, l1_size)
         self.l2 = nn.Linear(l1_size, l2_size)
-        self.l3 = nn.Linear(l2_size, in_size)
+        self.l3 = nn.Linear(l2_size, l1_size)
 
         self.layernorm = nn.LayerNorm(l1_size, eps=1e-6)
 
@@ -272,13 +272,14 @@ class ChannelDecoder(nn.Module):
 #AWGN Channel, different from the original implementation, not sure if it will work
 class AWGNChannel(nn.Module):
 
-    def __init__(self, noise_variance):
+    def __init__(self, noise_variance, device):
         super().__init__()
 
         self.noise_variance = noise_variance
+        self.device = device
 
     def forward(self, x):
-        noise = torch.normal(0, self.noise_variance, size=x.shape)
+        noise = torch.normal(0, self.noise_variance, size=x.shape).to(self.device)
         return x + noise
 
 ## --- END SECTION --- ###    
@@ -331,11 +332,22 @@ class DeepSC(nn.Module):
     def project(self, x):
         return self.projection_layer(x)
     
+    def forward(self, src, src_mask, tgt, tgt_mask):
+        x = self.encode(src, src_mask)
+        x = self.channel_encode(x)
+        x = self.channel_transmit(x)
+        x = self.channel_decode(x)
+        x = self.decode(x, src_mask, tgt, tgt_mask)
+        x = self.project(x)
+        return x
+
+
+    
 
 def Build_DeepSC(src_vocab_size: int, tgt_vocab_size: int,
-                     src_seq_len: int, tgt_seq_len: int,
+                     src_seq_len: int, tgt_seq_len: int, device,
                      d_model:int=512, N:int=6, h:int=8, dropout:float=0.1,
-                     d_ff:int=2048, noise_variance:float = 0.1)->DeepSC:
+                     d_ff:int=2048, noise_variance:float = 0.1 )->DeepSC:
     
     #create the embedding layers
     src_embed = InputEmbeddings(d_model, src_vocab_size)
@@ -373,7 +385,7 @@ def Build_DeepSC(src_vocab_size: int, tgt_vocab_size: int,
 
     # create channel related layers
     channel_encoder = ChannelEncoder(d_model, l1_size=256, out_size=16)
-    awgn_channel = AWGNChannel(noise_variance=noise_variance)
+    awgn_channel = AWGNChannel(noise_variance=noise_variance, device=device)
     channel_decoder = ChannelDecoder(in_size=16, l1_size=d_model, l2_size=512)
 
     #create the whole transformer
