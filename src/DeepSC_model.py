@@ -107,6 +107,8 @@ class MultiHeadAttention(nn.Module):
         #(batch, h, seq_len. d_k) --> (batch, h, seq_len, seq_len)
         attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
+            if mask.dim() == 3:
+                mask = mask.unsqueeze(1).expand(-1, query.size(1), -1, -1)
             attention_scores.masked_fill_(mask == 0, -1e9)
         
         attention_scores = attention_scores.softmax(dim = -1)   #(batch, h, seq_len, seq_len)

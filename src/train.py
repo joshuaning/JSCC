@@ -15,7 +15,7 @@ import csv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--MAX-LENGTH', default=27, type=int)
-parser.add_argument('--batch-size', default=16, type=int)
+parser.add_argument('--batch-size', default=64, type=int)
 parser.add_argument('--num-lang', default=2, type=int)
 parser.add_argument('--num-epoch', default=80, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
@@ -66,8 +66,8 @@ def train_iter(model, loader, pad_idx, device, opt, loss_fn, criterion):
 
         inputs, labels = data[:, 0, :], data[:, 1, :]
 
-        print("input shape = ", inputs.shape)
-        print("label shape = ", labels.shape)
+        # print("input shape = ", inputs.shape)
+        # print("label shape = ", labels.shape)
         inputs = inputs.contiguous().to(device = device, dtype=torch.long)
         labels = labels.contiguous().to(device = device, dtype=torch.long)
 
@@ -84,7 +84,7 @@ def train_iter(model, loader, pad_idx, device, opt, loss_fn, criterion):
         loss.backward()
         opt.step()
         total_loss += loss.item()
-    return loss / i
+    return total_loss / i
 
 def val_iter(model, loader, pad_idx, device, loss_fn, criterion):
     '''
