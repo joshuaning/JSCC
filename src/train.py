@@ -1,5 +1,5 @@
 import argparse
-from dataset import EuroparlDataset, TextTokenConverter, collate
+from dataset import *
 from torch.utils.data import DataLoader
 from functools import partial
 import torch
@@ -41,16 +41,15 @@ def generate_mask(inputs, labels, pad_idx, device):
     in the masks, 1 represent masked, 0 represent transparent 
     '''
 
-    src_mask = (inputs == pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device)
-    lab_mask = (labels == pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device)
+    src_mask = (inputs != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device)
+    lab_mask = (labels != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device)
     attn_size = (1, inputs.size()[-1], inputs.size()[-1])
     # attn_size = (inputs.size(0), 1, inputs.size(1))
 
     #lower triangle is masked for causality
-    causual_mask = torch.triu(torch.ones(attn_size), diagonal=1)
+    causual_mask = torch.tril(torch.ones(attn_size))
     causual_mask = causual_mask.to(dtype=torch.float32, device=device)
-
-    combined_mask = torch.max(lab_mask, causual_mask)
+    combined_mask = torch.min(lab_mask, causual_mask)
 
     return src_mask.contiguous(), combined_mask.contiguous()
 
@@ -86,7 +85,19 @@ def train_iter(model, loader, pad_idx, device, opt, loss_fn, criterion):
         total_loss += loss.item()
     return total_loss / i
 
-def val_iter(model, loader, pad_idx, device, loss_fn, criterion):
+def print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2):
+    for i, sentences in enumerate(pred):
+        if sentences_ctr < num_to_print:
+            print("src lang =       ", ttc1.idx2text(inputs[i]))
+            print("trg lang =       ", ttc2.idx2text(sentences))
+            print("trg lang gt =    ", ttc2.idx2text(labels[i]))
+            print("\n")
+            sentences_ctr += 1
+        else:
+            return sentences_ctr
+    return sentences_ctr
+
+def val_iter(model, loader, pad_idx, device, loss_fn, criterion, args):
     '''
     Evalutate iteration for DeepSC_translate
     returns the avg per patch validation loss of current epoch
@@ -94,6 +105,12 @@ def val_iter(model, loader, pad_idx, device, loss_fn, criterion):
 
     model.eval()
     total_loss = 0
+    ttc1 = TextTokenConverter(lang = args.src_lang)
+    ttc2 = TextTokenConverter(lang = args.trg_lang)
+    sentences_ctr = 0
+    num_to_print = 10
+
+
     with torch.no_grad():
         for i, data in tqdm(enumerate(loader)):
 
@@ -105,10 +122,11 @@ def val_iter(model, loader, pad_idx, device, loss_fn, criterion):
             src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
 
             pred = model(inputs, src_mask, labels, combined_mask)
-            pred = pred.view(-1, pred.size(-1))
-
-            loss = loss_fn(pred, labels_, pad_idx, criterion)
+            pred_ = pred.view(-1, pred.size(-1))
+            loss = loss_fn(pred_, labels_, pad_idx, criterion)
             total_loss += loss.item()
+
+            print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2)
 
     return total_loss / i
 
@@ -136,16 +154,16 @@ def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, c
         train_loss = train_iter(model, train_loader, pad_idx, device, opt, loss_fn, criterion)
         # TODO: train MI NET if needed
         model.change_channel(0.1, device)
-        val_loss = val_iter(model, val_loader, pad_idx, device, loss_fn, criterion)
+        val_loss = val_iter(model, val_loader, pad_idx, device, loss_fn, criterion, args)
 
         #save model during training
         if(min_loss > val_loss): #save best performing
-            fname = 'epoch{}_best.pth'.format(epoch)
+            fname = 'best.pth'
             fname =  os.path.join(cur_dir, fname)
             torch.save(model.state_dict(), fname)
             min_loss = val_loss
             print("saved weights to {}".format(fname))
-        elif(epoch % 10 == 0): #save every 10 epoch just in case
+        if(epoch % 10 == 0): #save every 10 epoch just in case
             fname = 'epoch{}.pth'.format(epoch)
             fname =  os.path.join(cur_dir, fname)
             torch.save(model.state_dict(), fname)
@@ -160,16 +178,12 @@ def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, c
 
         #save telemetries to file
         output_csv_path = os.path.join(cur_dir, 'telemetry.csv')
-        per_epoch_train_loss.append(train_loss)
-        per_epoch_validation_loss.append(val_loss)
+        per_epoch_train_loss.append(train_loss.cpu().numpy())
+        per_epoch_validation_loss.append(val_loss.cpu().numpy())
         all_loss = [per_epoch_train_loss, per_epoch_validation_loss]
         with open(output_csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerows(all_loss)
-
-
-
-
 
 
 
@@ -188,8 +202,10 @@ if __name__ == '__main__':
     collate_fn = partial(collate, maxNumToken=args.MAX_LENGTH, numlang=args.num_lang) 
     train_set = EuroparlDataset(split="train", src_lang=args.src_lang, trg_lang=args.trg_lang)
     val_set = EuroparlDataset(split="test", src_lang=args.src_lang, trg_lang=args.trg_lang)
-    train_loader = DataLoader(train_set, num_workers=2, batch_size=args.batch_size, collate_fn = collate_fn)
-    val_loader = DataLoader(val_set, num_workers=2, batch_size=args.batch_size, collate_fn = collate_fn)
+    train_loader = DataLoader(train_set, num_workers=2, batch_size=args.batch_size, 
+                              collate_fn = collate_fn, shuffle=True)
+    val_loader = DataLoader(val_set, num_workers=2, batch_size=args.batch_size, 
+                            collate_fn = collate_fn, shuffle=True)
     ttc_src = TextTokenConverter(lang = args.src_lang)
     ttc_trg = TextTokenConverter(lang = args.trg_lang)
     # model = [] #to be replaced with net initialization

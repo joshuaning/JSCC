@@ -30,7 +30,6 @@ def inference(model, loader, pad_idx, device, num_to_print, ttc1, ttc2):
     '''
 
     model.eval()
-    total_loss = 0
     sentences_ctr = 0
     with torch.no_grad():
         for data in loader:
@@ -42,17 +41,11 @@ def inference(model, loader, pad_idx, device, num_to_print, ttc1, ttc2):
 
             pred = model(inputs, src_mask, labels, combined_mask)
             pred = torch.argmax(pred, dim=-1) #get most probable word
-            print(pred.shape)
-            print(labels.shape)
 
-            for i, sentences in enumerate(pred):
-                if sentences_ctr < num_to_print:
-                    print("src lang =       ", ttc1.idx2text(inputs[i]))
-                    print("trg lang =       ", ttc2.idx2text(sentences))
-                    print("trg lang gt =    ", ttc2.idx2text(labels[i]))
-                    sentences_ctr += 1
-                else:
-                    return None
+            sentences_ctr = print_pred(sentences_ctr, num_to_print, 
+                                       inputs, labels, pred, ttc1, ttc2)
+
+            
 
 
 if __name__ == "__main__":
