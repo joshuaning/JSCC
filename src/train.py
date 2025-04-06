@@ -128,8 +128,14 @@ def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, c
         print("----------------- starting epoch {} -----------------".format(epoch))
         epoch_start_time = datetime.now()
 
+        # added SNR to std calculation, train each epoch with a random SNR
+        noise_std = np.random.uniform(SNR_to_noise(5), SNR_to_noise(10), size=(1))
+        noise_std = noise_std[0]
+        model.change_channel(noise_std, device)
+
         train_loss = train_iter(model, train_loader, pad_idx, device, opt, loss_fn, criterion)
         # TODO: train MI NET if needed
+        model.change_channel(0.1, device)
         val_loss = val_iter(model, val_loader, pad_idx, device, loss_fn, criterion)
 
         #save model during training
