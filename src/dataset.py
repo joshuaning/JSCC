@@ -51,7 +51,10 @@ class TextTokenConverter():
     def idx2text(self, input_idxs):
         output_text = []
         for idx in input_idxs:
-            output_text.append(self.idx_to_token[idx.item()])
+            try:
+                output_text.append(self.idx_to_token[idx.item()])
+            except:
+                output_text.append("<UNK>")
         return ' '.join(output_text)
     
     def text2idx(self, input_token):
@@ -62,5 +65,8 @@ class TextTokenConverter():
     
     def get_pad_idx(self):
         return self.token_to_idx["<PAD>"]
+    
+    def get_vocab_size(self):
+        return len(self.token_to_idx.keys())
 
 

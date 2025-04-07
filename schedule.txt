@@ -5,3 +5,12 @@
 4/3 - 4/4
 3. connect our net with the same interface as DeepsSC
 4. train our net
+
+
+4/6/
+verify the mask 0 or 1 pass through
+do SNR as an input to the net
+Joashua:
+Make it save less 
+Make it random shuffle
+print 10 samples from the validation to visualize
