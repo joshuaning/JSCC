@@ -15,7 +15,7 @@ import csv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--MAX-LENGTH', default=27, type=int)
-parser.add_argument('--batch-size', default=64, type=int)
+parser.add_argument('--batch-size', default=128, type=int)
 parser.add_argument('--num-lang', default=2, type=int)
 parser.add_argument('--num-epoch', default=80, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
@@ -126,7 +126,9 @@ def val_iter(model, loader, pad_idx, device, loss_fn, criterion, args):
             loss = loss_fn(pred_, labels_, pad_idx, criterion)
             total_loss += loss.item()
 
-            print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2)
+            pred = torch.argmax(pred, dim=-1) #get most probable word
+            sentences_ctr = print_pred(sentences_ctr, num_to_print, inputs, labels, pred, 
+                                       ttc1, ttc2)
 
     return total_loss / i
 
@@ -178,8 +180,8 @@ def train_loop(model, train_loader, val_loader, pad_idx, device, opt, loss_fn, c
 
         #save telemetries to file
         output_csv_path = os.path.join(cur_dir, 'telemetry.csv')
-        per_epoch_train_loss.append(train_loss.cpu().numpy())
-        per_epoch_validation_loss.append(val_loss.cpu().numpy())
+        per_epoch_train_loss.append(train_loss)
+        per_epoch_validation_loss.append(val_loss)
         all_loss = [per_epoch_train_loss, per_epoch_validation_loss]
         with open(output_csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
