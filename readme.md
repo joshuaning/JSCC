@@ -28,7 +28,9 @@ Authors of this repo: Joshua Ning, Jason Ning
 
 ### Environment files
 Use anaconda to import the environment files.
+
 For MacOS, load: `env/macEnv`
+
 For Windows with Nvidia GPU, load: `env/winNvEnv`
 
 ### Obtain the Dataset:
@@ -42,7 +44,7 @@ Get it by using the following command:
 ### Preprocessing
 To preprocess the data, run `preprocess.py` with `--input-data-dir` set to the dataset directory.
 In the `--input-data-dir` there must be a folder named `--lang1`-`--lang2` for example if
-`--lang1 == 'da'` and `--lang2 == 'en'`, in `--input-data-dir` there must be a folder named
+`--lang1 == 'da'` and `--lang2 == 'en'`, then in `--input-data-dir` there must be a folder named
 `da-en`.
 
 ### Training
