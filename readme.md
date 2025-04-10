@@ -34,7 +34,7 @@ For MacOS, load: `env/macEnv`
 For Windows with Nvidia GPU, load: `env/winNvEnv`
 
 ### Obtain the Dataset:
-The dataset is Europarl from hugging face [https://huggingface.co/datasets/Helsinki-NLP/europarl]
+The dataset Europarl from hugging face [https://huggingface.co/datasets/Helsinki-NLP/europarl]
 Get it by using the following command:
 ```
     git lfs install  
