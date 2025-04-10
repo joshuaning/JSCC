@@ -12,10 +12,14 @@ class EuroparlDataset(Dataset):
     '''
 
     def __init__(self, data_dir = '', split = 'train', src_lang = 'en', trg_lang = 'en'):
-        with open(data_dir + 'dataset/{}/{}_data.pkl'.format(src_lang, split), 'rb') as f:
+
+        src_dir = os.path.join(data_dir, src_lang, '{}_data.pkl'.format(split))
+        trg_dir = os.path.join(data_dir, trg_lang, '{}_data.pkl'.format(split))
+
+        with open(src_dir, 'rb') as f:
             self.data_src = pickle.load(f)
         
-        with open(data_dir + 'dataset/{}/{}_data.pkl'.format(trg_lang, split), 'rb') as f:
+        with open(trg_dir, 'rb') as f:
             self.data_trg = pickle.load(f)
 
         assert(len(self.data_src) == len(self.data_trg))
