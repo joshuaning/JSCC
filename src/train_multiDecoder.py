@@ -45,8 +45,8 @@ def generate_mask(inputs, labels, pad_idx, device):
     in the masks, 1 represent masked, 0 represent transparent 
     '''
 
-    src_mask = (inputs != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device)
-    lab_mask = (labels != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device)
+    src_mask = (inputs != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device, non_blocking=True)
+    lab_mask = (labels != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device, non_blocking=True)
     attn_size = (1, inputs.size()[-1], inputs.size()[-1])
     # attn_size = (inputs.size(0), 1, inputs.size(1))
 
@@ -66,10 +66,10 @@ def train_batch(data, opt, device, pad_idx, deepsc_encoder_and_channel, decoder,
 
         # print("input shape = ", inputs.shape)
         # print("label shape = ", labels.shape)
-        inputs = inputs.contiguous().to(device = device, dtype=torch.long)
-        labels = labels.contiguous().to(device = device, dtype=torch.long)
+        inputs = inputs.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
+        labels = labels.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
 
-        labels_ = labels.contiguous().to(device = device).view(-1)
+        labels_ = labels.contiguous().to(device = device, non_blocking=True).view(-1)
         src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
 
 
@@ -106,7 +106,7 @@ def train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks,
 
         #train decoder for the rest of the language
         for j in range(1, len(loader)):
-            data = next(loader[j])
+            data = next(iter(loader[j]))
             total_loss[j] += train_batch(data, opt[j], device, pad_idx, deepsc_encoder_and_channel,
                                           transformer_decoder_blocks[j], loss_fn, criterion)
 
@@ -130,8 +130,8 @@ def val_batch(data, device, pad_idx, deepsc_encoder_and_channel,
     num_to_print = 5
 
     inputs, labels = data[:, 0, :], data[:, 1, :]
-    inputs = inputs.contiguous().to(device = device, dtype=torch.long)
-    labels = labels.contiguous().to(device = device, dtype=torch.long)
+    inputs = inputs.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
+    labels = labels.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
 
     labels_ = labels.contiguous().to(device = device).view(-1)
     src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
@@ -311,15 +311,15 @@ if __name__ == '__main__':
         val_set = EuroparlDataset(data_dir=lang_data_dir, split="test", 
                                   src_lang=src_lang, trg_lang=trg_lang)
         cur_train_loader = DataLoader(train_set, num_workers=2, batch_size=args.batch_size, 
-                                    collate_fn = collate_fn, shuffle=True)
+                                    collate_fn = collate_fn, shuffle=True, pin_memory=True)
             
         cur_val_loader = DataLoader(val_set, num_workers=2, batch_size=args.batch_size, 
-                                    collate_fn = collate_fn, shuffle=True)
+                                    collate_fn = collate_fn, shuffle=True, pin_memory=True)
         
         #make the multi-lang dataloader be able to cycle
         if i > 1:
-            cur_train_loader= itertools.cycle(cur_train_loader)
-            cur_val_loader = itertools.cycle(cur_val_loader)
+            cur_train_loader= itertools.cycle(iter(cur_train_loader))
+            cur_val_loader = itertools.cycle(iter(cur_val_loader))
             
         train_loader.append(cur_train_loader)
         val_loader.append(cur_val_loader)
