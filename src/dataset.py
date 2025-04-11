@@ -8,7 +8,7 @@ import json
 class EuroparlDataset(Dataset):
     '''
     requires running preprocess.py first to generate the cleaned dataset at
-    datadir/dataset/[lang]/[split]_data.pkl
+    datadir/[lang]/[split]_data.pkl
     '''
 
     def __init__(self, data_dir = '', split = 'train', src_lang = 'en', trg_lang = 'en'):
@@ -47,7 +47,7 @@ def collate(batch, maxNumToken = 27, numlang = 2):
 
 class TextTokenConverter():
     def __init__(self, data_dir = '', lang = 'en'):
-        with open(data_dir +'dataset/{}/vocab.json'.format(lang)) as f:
+        with open(data_dir +'/{}/vocab.json'.format(lang)) as f:
             self.data = json.load(f)
             self.token_to_idx = self.data['token_to_idx']
             self.idx_to_token = {value:key for key, value in self.token_to_idx.items()}

@@ -24,7 +24,7 @@ parser.add_argument('--lang-pairs', default='da-en_en-fr_en-es', type=str)
 # parser.add_argument('--multilang-out-dir', default='dataset/multilang/', type=str)
 
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
-parser.add_argument('--MAX-LENGTH', default=30, type=int)
+parser.add_argument('--MAX-LENGTH', default=25, type=int)
 
 
 

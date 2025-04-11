@@ -414,7 +414,7 @@ class Transformer_Decoder(nn.Module):
     def project(self, x):
         return self.projection_layer(x)
     
-    def forward(self, src_mask, tgt, tgt_mask):
+    def forward(self, x, src_mask, tgt, tgt_mask):
         x = self.decode(x, src_mask, tgt, tgt_mask)
         x = self.project(x)
         return x
@@ -464,6 +464,7 @@ def Build_MultiDecoder_DeepSC(num_decoders: int, src_vocab_size: int,
 
     # create 1 encoder and channel
     deepsc_encoder_and_channel = DeepSC_ECCD(encoder, src_embed, src_pos, channel_encoder, awgn_channel, channel_decoder)
+    deepsc_encoder_and_channel.to(device)
 
     # create num_decoders of decoders
     transformer_decoder_blocks = []
@@ -473,7 +474,7 @@ def Build_MultiDecoder_DeepSC(num_decoders: int, src_vocab_size: int,
         projection_layer = ProjectionLayer(d_model, tgt_vocab_size[j])
 
         transformer_decoder = Transformer_Decoder(decoder, tgt_embed, tgt_pos, projection_layer)
-        transformer_decoder_blocks.append(transformer_decoder)
+        transformer_decoder_blocks.append(transformer_decoder.to(device))
 
     # Init params
     for p in deepsc_encoder_and_channel.parameters():
