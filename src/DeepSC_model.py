@@ -419,15 +419,15 @@ class Transformer_Decoder(nn.Module):
         x = self.project(x)
         return x
     
-
+# vector input: tgt_vocab_size, each element must be an int
+# (I don't want to import list, so we don't check for types hehe)
 def Build_MultiDecoder_DeepSC(num_decoders: int, src_vocab_size: int, 
-                     tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, device,
+                     tgt_vocab_size, src_seq_len: int, tgt_seq_len: int, device,
                      d_model:int=128, N:int=4, h:int=8, dropout:float=0.1,
                      d_ff:int=512, noise_std:float = 0.1 )->DeepSC:
     
-    #create the embedding layers
+    #create the Input embedding layer
     src_embed = InputEmbeddings(d_model, src_vocab_size)
-    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
 
     #create the positional encoding layers  (They should be the same?)
     src_pos = PositionalEncoding(d_model, src_seq_len, dropout)
@@ -456,8 +456,6 @@ def Build_MultiDecoder_DeepSC(num_decoders: int, src_vocab_size: int,
     encoder = Encoder(nn.ModuleList(encoder_blocks))
     decoder = Decoder(nn.ModuleList(decoder_blocks))
 
-    # create the projection layer
-    projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
 
     # create channel related layers
     channel_encoder = ChannelEncoder(d_model, l1_size=256, out_size=16)
@@ -467,9 +465,13 @@ def Build_MultiDecoder_DeepSC(num_decoders: int, src_vocab_size: int,
     # create 1 encoder and channel
     deepsc_encoder_and_channel = DeepSC_ECCD(encoder, src_embed, src_pos, channel_encoder, awgn_channel, channel_decoder)
 
-    # create num_decpders of decoders
+    # create num_decoders of decoders
     transformer_decoder_blocks = []
-    for _ in range(num_decoders):
+    for j in range(num_decoders):
+        #create the target embedding layer and the projection layer for the decoders
+        tgt_embed = InputEmbeddings(d_model, tgt_vocab_size[j])
+        projection_layer = ProjectionLayer(d_model, tgt_vocab_size[j])
+
         transformer_decoder = Transformer_Decoder(decoder, tgt_embed, tgt_pos, projection_layer)
         transformer_decoder_blocks.append(transformer_decoder)
 

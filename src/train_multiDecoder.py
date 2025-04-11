@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 from DeepSC_model import *
 import csv
+from preprocess import find_src_lang
 
 
 
@@ -171,13 +172,7 @@ def val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, pad
 
 # Array parameters: transformer_decoder_blocks, train_loader, val_loader, opt
 def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, val_loader, pad_idx, device, opt, loss_fn, criterion, args):
-    min_loss = 999999999999999
-    now = datetime.now()
-
-    #create dir for saving weights
-    dt_string = now.strftime("%m_%d_%Y__%H_%M_%S")
-    cur_dir = os.path.join(args.model_out_dir, dt_string)
-    os.makedirs(cur_dir)
+    min_loss = [999999999999999]*len(train_loader)
 
     per_epoch_train_loss = []
     per_epoch_validation_loss = []
@@ -194,25 +189,26 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
         train_loss = train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, pad_idx, device, opt, loss_fn, criterion)
         # TODO: train MI NET if needed
         deepsc_encoder_and_channel.change_channel(0.1, device)
-        val_loss = val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, val_loader, pad_idx, device, loss_fn, criterion, args)
+        val_loss = val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, val_loader, pad_idx, device, loss_fn, criterion, args, langs)
 
         #save model during training
-        if(min_loss > val_loss): #save best performing
-            fname = 'best.pth'
-            fname =  os.path.join(cur_dir, fname)
+        for lang in langs:
+            if(min_loss > val_loss): #save best performing
+                fname = 'best.pth'
+                fname =  os.path.join(cur_dir, fname)
 
-            #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
-            torch.save(deepsc_encoder_and_channel.state_dict(), fname)
-            torch.save(transformer_decoder_blocks.state_dict(), fname)
-            min_loss = val_loss
-            print("saved weights to {}".format(fname))
-        if(epoch % 10 == 0): #save every 10 epoch just in case
-            fname = 'epoch{}.pth'.format(epoch)
-            fname =  os.path.join(cur_dir, fname)
-            #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
-            torch.save(deepsc_encoder_and_channel.state_dict(), fname)
-            torch.save(transformer_decoder_blocks.state_dict(), fname)
-            print("saved weights to {}".format(fname))
+                #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
+                torch.save(deepsc_encoder_and_channel.state_dict(), fname)
+                torch.save(transformer_decoder_blocks.state_dict(), fname)
+                min_loss = val_loss
+                print("saved weights to {}".format(fname))
+            if(epoch % 10 == 0): #save every 10 epoch just in case
+                fname = 'epoch{}.pth'.format(epoch)
+                fname =  os.path.join(cur_dir, fname)
+                #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
+                torch.save(deepsc_encoder_and_channel.state_dict(), fname)
+                torch.save(transformer_decoder_blocks.state_dict(), fname)
+                print("saved weights to {}".format(fname))
         
         epoch_end_time = datetime.now()
         del_time = epoch_end_time - epoch_start_time
@@ -245,18 +241,52 @@ if __name__ == '__main__':
     # initialize some parameters
     args = parser.parse_args()
     collate_fn = partial(collate, maxNumToken=args.MAX_LENGTH, numlang=args.num_lang) 
-    train_set = EuroparlDataset(split="train", src_lang=args.src_lang, trg_lang=args.trg_lang)
-    val_set = EuroparlDataset(split="test", src_lang=args.src_lang, trg_lang=args.trg_lang)
-    train_loader = DataLoader(train_set, num_workers=2, batch_size=args.batch_size, 
-                              collate_fn = collate_fn, shuffle=True)
-    val_loader = DataLoader(val_set, num_workers=2, batch_size=args.batch_size, 
-                            collate_fn = collate_fn, shuffle=True)
-    ttc_src = TextTokenConverter(lang = args.src_lang)
-    ttc_trg = TextTokenConverter(lang = args.trg_lang)
-    # model = [] #to be replaced with net initialization
 
+
+    #TODO: make dataloader in the same sequences as lang
+    #process the desired languages from args
+
+    now = datetime.now()
+    #create dir for saving weights
+    dt_string = now.strftime("%m_%d_%Y__%H_%M_%S")
+    cur_dir = os.path.join(args.model_out_dir, dt_string)
+    os.makedirs(cur_dir)
+
+    #prepare dataloaders for each languages
+    lang_pairs = args.lang_pairs.split('_')
+    split_languages = [lang_pair.split('-') for lang_pair in lang_pairs]
+    split_languages = set(split_languages)
+    src_lang = find_src_lang(lang_pairs)
+    trg_langs = list(split_languages.remove(src_lang))
+    langs = src_lang + trg_langs
+    
+    print('source language = {}'.format(src_lang))
+    print('target language = ', trg_langs)
+    
+    #create objects related with src_lang
+    os.makedirs(os.path.join(cur_dir, src_lang))
+    ttc_src = TextTokenConverter(lang = src_lang)
     src_vocab_size = ttc_src.get_vocab_size()
-    trg_vocab_size = ttc_trg.get_vocab_size()
+
+    #create objects related with trg_langs
+    train_loader = []
+    val_loader = []
+    trg_vocab_size = []
+
+    for trg_lang in trg_langs:
+        os.makedirs(os.path.join(cur_dir, trg_lang))
+        train_set = EuroparlDataset(split="train", src_lang=src_lang, trg_lang=trg_lang)
+        val_set = EuroparlDataset(split="test", src_lang=src_lang, trg_lang=trg_lang)
+        train_loader.append(DataLoader(train_set, num_workers=2, batch_size=args.batch_size, 
+                              collate_fn = collate_fn, shuffle=True))
+        val_loader.append(DataLoader(val_set, num_workers=2, batch_size=args.batch_size, 
+                            collate_fn = collate_fn, shuffle=True))
+        ttc_trg = TextTokenConverter(lang = trg_lang)
+        trg_vocab_size.append(ttc_trg.get_vocab_size())
+
+
+    # TODO: make the build deepSC take in tgt_vocab_size as a vector
+    # vector input: tgt_vocab_size, each element must be an int
     deepsc_encoder_and_channel, transformer_decoder_blocks = Build_MultiDecoder_DeepSC(
                                                 num_decoders=2, src_vocab_size = src_vocab_size, 
                                                 tgt_vocab_size=trg_vocab_size, device=device, 
