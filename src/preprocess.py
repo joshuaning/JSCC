@@ -256,6 +256,9 @@ def build_europarl(args):
 
         lang_names = [lang1, lang2]
 
+        #guarentee src lang is the first 
+        if src_lang == lang1: src_first = src_lang + '-' + lang2
+        else: src_first = src_lang + '-' + lang1
 
         print("extracting sentences---------------------------")
         input_folder = os.path.join(args.input_data_dir, lang_pair)
@@ -271,7 +274,7 @@ def build_europarl(args):
         lang_counter = 0
         for sentences in sentence_pairs:
             curr_lang = lang_names[lang_counter]
-            cur_out_dir = os.path.join(args.output_dir, lang_pair, curr_lang)
+            cur_out_dir = os.path.join(args.output_dir, src_first, curr_lang)
             if not os.path.exists(cur_out_dir):
                 os.makedirs(cur_out_dir)
             curr_out_train_dir = os.path.join(cur_out_dir, 'train_data.pkl')

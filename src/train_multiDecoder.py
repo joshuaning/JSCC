@@ -174,8 +174,16 @@ def val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, pad
 def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, val_loader, pad_idx, device, opt, loss_fn, criterion, args):
     min_loss = [999999999999999]*len(train_loader)
 
-    per_epoch_train_loss = []
-    per_epoch_validation_loss = []
+    per_epoch_train_loss = np.array([])
+    per_epoch_validation_loss = np.array([])
+    train_telemetry_headers = []
+    val_telemetry_headers = []
+    for trg_lang in langs[1:]:
+        train_telemetry_headers.append("{} train loss".format(trg_lang))
+        val_telemetry_headers.append("{} val loss".format(trg_lang))
+    telemetry_headers = train_telemetry_headers + val_telemetry_headers
+        
+
 
     for epoch in range(args.num_epoch):
         print("----------------- starting epoch {} -----------------".format(epoch))
@@ -187,43 +195,57 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
         deepsc_encoder_and_channel.change_channel(noise_std, device)
 
         train_loss = train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, pad_idx, device, opt, loss_fn, criterion)
+        mean_train_loss = np.mean(train_loss)
         # TODO: train MI NET if needed
         deepsc_encoder_and_channel.change_channel(0.1, device)
         val_loss = val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, val_loader, pad_idx, device, loss_fn, criterion, args, langs)
+        mean_val_loss = np.mean(val_loss)
 
         #save model during training
-        for lang in langs:
-            if(min_loss > val_loss): #save best performing
-                fname = 'best.pth'
-                fname =  os.path.join(cur_dir, fname)
+        if(min_loss > mean_val_loss): #save best performing
+            #save encoder
+            fname_encoder = 'best_encoder.pth'
+            fname_encoder =  os.path.join(cur_dir, fname_encoder)
+            torch.save(deepsc_encoder_and_channel.state_dict(), fname_encoder)
+            print("saved best encoder weights to {}".format(fname_encoder))
 
-                #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
-                torch.save(deepsc_encoder_and_channel.state_dict(), fname)
-                torch.save(transformer_decoder_blocks.state_dict(), fname)
-                min_loss = val_loss
-                print("saved weights to {}".format(fname))
-            if(epoch % 10 == 0): #save every 10 epoch just in case
-                fname = 'epoch{}.pth'.format(epoch)
-                fname =  os.path.join(cur_dir, fname)
-                #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
-                torch.save(deepsc_encoder_and_channel.state_dict(), fname)
-                torch.save(transformer_decoder_blocks.state_dict(), fname)
-                print("saved weights to {}".format(fname))
-        
+            #save decoder
+            for i, trg_lang in enumerate(langs[1:]):
+                fname_decoder = 'best_decoder_{}.pth'.format(trg_lang)
+                fname_decoder =  os.path.join(cur_dir, fname_decoder)
+                torch.save(transformer_decoder_blocks[i].state_dict(), fname_decoder)
+                print("saved best decoder weights to {}".format(fname_decoder))
+            min_loss = mean_val_loss
+        if(epoch % 10 == 0): #save every 10 epoch just in case
+            #save encoder
+            fname_encoder = 'epoch{}_encoder.pth'.format(epoch)
+            fname_encoder =  os.path.join(cur_dir, fname_encoder)
+            torch.save(deepsc_encoder_and_channel.state_dict(), fname_encoder)
+            print("saved weights of encoder weights to {}".format(fname_encoder))
+
+            #save decoder
+            for i, trg_lang in enumerate(langs[1:]):
+                fname_decoder = 'epoch{}_encoder_{}.pth'.format(epoch, trg_lang)
+                fname_decoder =  os.path.join(cur_dir, fname_decoder)
+                torch.save(transformer_decoder_blocks[i].state_dict(), fname_decoder)
+                print("saved weights of decoder weights to {}".format(fname_decoder))
+
         epoch_end_time = datetime.now()
         del_time = epoch_end_time - epoch_start_time
         # print some telemetries 
         print("epoch {} took {} minutes to train".format(epoch, del_time.total_seconds()/60))
-        print("training loss = {}".format(train_loss))
-        print("validation loss = {}".format(val_loss))
+        print("mean training loss = {}".format(mean_train_loss))
+        print("mean validation loss = {}".format(mean_val_loss))
 
         #save telemetries to file
         output_csv_path = os.path.join(cur_dir, 'telemetry.csv')
-        per_epoch_train_loss.append(train_loss)
-        per_epoch_validation_loss.append(val_loss)
-        all_loss = [per_epoch_train_loss, per_epoch_validation_loss]
+        per_epoch_train_loss= np.append(per_epoch_train_loss, train_loss, axis=0)
+        per_epoch_validation_loss = np.append(per_epoch_validation_loss, val_loss, axis=0)
+
+        all_loss = np.append(per_epoch_train_loss, per_epoch_validation_loss, axis=1)
         with open(output_csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
+            writer.writerow(telemetry_headers)
             writer.writerows(all_loss)
 
 
@@ -275,8 +297,9 @@ if __name__ == '__main__':
 
     for trg_lang in trg_langs:
         os.makedirs(os.path.join(cur_dir, trg_lang))
-        train_set = EuroparlDataset(split="train", src_lang=src_lang, trg_lang=trg_lang)
-        val_set = EuroparlDataset(split="test", src_lang=src_lang, trg_lang=trg_lang)
+        #TODO: double check this
+        train_set = EuroparlDataset(data_dir = '', split="train", src_lang=src_lang, trg_lang=trg_lang)
+        val_set = EuroparlDataset(data_dir = '', split="test", src_lang=src_lang, trg_lang=trg_lang)
         train_loader.append(DataLoader(train_set, num_workers=2, batch_size=args.batch_size, 
                               collate_fn = collate_fn, shuffle=True))
         val_loader.append(DataLoader(val_set, num_workers=2, batch_size=args.batch_size, 
