@@ -53,18 +53,11 @@ def generate_mask(inputs, labels, pad_idx, device):
 
     return src_mask.contiguous(), combined_mask.contiguous()
 
-def train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, pad_idx, device, opt, loss_fn, criterion):
-    '''
-    Train iteration for DeepSC_translate
-    returns the avg per patch training loss of current epoch
-    '''
-    deepsc_encoder_and_channel.train()
-    transformer_decoder_blocks.train()
-    total_loss = 0
-    for i, data in tqdm(enumerate(loader)):
+def train_batch(data, opt, device, pad_idx, deepsc_encoder_and_channel, decoder, loss_fn, criterion):
+        decoder.train()
+        
         opt.zero_grad()
 
-        ## TODO: Modify so it generate labels as a vector 
         inputs, labels = data[:, 0, :], data[:, 1, :]
 
         # print("input shape = ", inputs.shape)
@@ -73,28 +66,47 @@ def train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, p
         labels = labels.contiguous().to(device = device, dtype=torch.long)
 
         labels_ = labels.contiguous().to(device = device).view(-1)
-
-        ## TODO: Modify so it generate many combined_mask 
         src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
 
 
         channel_decoder_output = deepsc_encoder_and_channel(inputs, src_mask)
-
-        loss = 0
-        for i, decoder in enumerate(transformer_decoder_blocks):
-
-                                                            # assume labels and combined_mask are vectors
-            pred = decoder(channel_decoder_output, src_mask, labels[i], combined_mask[i])  # per-language tgt input
-            pred = pred.view(-1, pred.size(-1))
-            loss += loss_fn(pred, labels_, pad_idx, criterion)
+        pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
+        pred = pred.view(-1, pred.size(-1))
+        loss = loss_fn(pred, labels_, pad_idx, criterion)
 
         # TODO: train MI Net if needed
-
+        
         loss.backward()
         opt.step()
-        total_loss += loss.item()
+        
+        decoder.eval()
+
+        return loss.item()
+
+
+# Array parameters: transformer_decoder_blocks, loader, opt
+def train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, pad_idx, device, opt, loss_fn, criterion):
+    '''
+    Train iteration for DeepSC_translate
+    returns the avg per patch training loss of current epoch
+    '''
+
+    #TODO: CHANGE THIS ROUND ROBIN TO do it each batch inestead of each epoch
+    deepsc_encoder_and_channel.train()
+    total_loss = np.zeros(len(loader))
+    for i, data in tqdm(enumerate(loader[0])):
+        #train decoder for first language
+        total_loss[0] += train_batch(data, opt[0], device, pad_idx, deepsc_encoder_and_channel, transformer_decoder_blocks[0], loss_fn, criterion)
+        
+
+        #train decoder for the rest of the language
+        for j in range(1, len(loader)):
+            data = next(loader[j])
+            total_loss[j] += train_batch(data, opt[j], device, pad_idx, deepsc_encoder_and_channel, transformer_decoder_blocks[j], loss_fn, criterion)
+
     return total_loss / i
 
+#TODO: See if this needs to be updated
 def print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2):
     for i, sentences in enumerate(pred):
         if sentences_ctr < num_to_print:
@@ -107,43 +119,57 @@ def print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2):
             return sentences_ctr
     return sentences_ctr
 
-def val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, pad_idx, device, loss_fn, criterion, args):
+def val_batch(data, device, pad_idx, deepsc_encoder_and_channel, decoder, loss_fn, criterion, cur_lang_idx, ttc):
+    #This is bad, but fixing it will be worse. Keep num_to_print <= args.batch-size
+    num_to_print = 5
+
+    inputs, labels = data[:, 0, :], data[:, 1, :]
+    inputs = inputs.contiguous().to(device = device, dtype=torch.long)
+    labels = labels.contiguous().to(device = device, dtype=torch.long)
+
+    labels_ = labels.contiguous().to(device = device).view(-1)
+    src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
+
+    channel_decoder_output = deepsc_encoder_and_channel(inputs, src_mask)
+    pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
+    pred = pred.view(-1, pred.size(-1))
+    loss = loss_fn(pred, labels_, pad_idx, criterion)
+
+    # print out sample sentences
+    pred = torch.argmax(pred, dim=-1) #get most probable word
+    ttc1 = ttc[0]
+    ttc2 = ttc[cur_lang_idx]
+    sentences_ctr = print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2)
+    return loss.item()
+
+# Array parameters: transformer_decoder_blocks, loader, langs
+def val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, loader, pad_idx, device, loss_fn, criterion, langs):
     '''
     Evalutate iteration for DeepSC_translate
     returns the avg per patch validation loss of current epoch
+    langs[0] = src lang, all others are destination languages
     '''
 
     deepsc_encoder_and_channel.eval()
     transformer_decoder_blocks.eval()
 
-    total_loss = 0
-    ttc1 = TextTokenConverter(lang = args.src_lang)
-    ttc2 = TextTokenConverter(lang = args.trg_lang)
-    sentences_ctr = 0
-    num_to_print = 10
-
+    total_loss = np.zeros(len(loader))
+    ttc = []
+    for lang in langs:
+        ttc.append(TextTokenConverter(lang = lang))
 
     with torch.no_grad():
         for i, data in tqdm(enumerate(loader)):
-
-            inputs, labels = data[:, 0, :], data[:, 1, :]
-            inputs = inputs.contiguous().to(device = device, dtype=torch.long)
-            labels = labels.contiguous().to(device = device, dtype=torch.long)
-
-            labels_ = labels.contiguous().to(device = device).view(-1)
-            src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
-
-            pred = model(inputs, src_mask, labels, combined_mask)
-            pred_ = pred.view(-1, pred.size(-1))
-            loss = loss_fn(pred_, labels_, pad_idx, criterion)
-            total_loss += loss.item()
-
-            pred = torch.argmax(pred, dim=-1) #get most probable word
-            sentences_ctr = print_pred(sentences_ctr, num_to_print, inputs, labels, pred, 
-                                       ttc1, ttc2)
-
+                
+            total_loss[0] += val_batch(data, device, pad_idx, deepsc_encoder_and_channel, transformer_decoder_blocks[0], loss_fn, criterion, 1, ttc)
+            #train decoder for the rest of the language
+            for j in range(1, len(loader)):
+                data = next(loader[j])
+                total_loss[j] += val_batch(data, device, pad_idx, deepsc_encoder_and_channel, transformer_decoder_blocks[j], loss_fn, criterion, j+1, ttc)
+            
     return total_loss / i
 
+# Array parameters: transformer_decoder_blocks, train_loader, val_loader, opt
 def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, val_loader, pad_idx, device, opt, loss_fn, criterion, args):
     min_loss = 999999999999999
     now = datetime.now()
@@ -174,13 +200,18 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
         if(min_loss > val_loss): #save best performing
             fname = 'best.pth'
             fname =  os.path.join(cur_dir, fname)
-            torch.save(model.state_dict(), fname)
+
+            #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
+            torch.save(deepsc_encoder_and_channel.state_dict(), fname)
+            torch.save(transformer_decoder_blocks.state_dict(), fname)
             min_loss = val_loss
             print("saved weights to {}".format(fname))
         if(epoch % 10 == 0): #save every 10 epoch just in case
             fname = 'epoch{}.pth'.format(epoch)
             fname =  os.path.join(cur_dir, fname)
-            torch.save(model.state_dict(), fname)
+            #TODO: make it only save the current decoder, transformer_decoder_blocks[decoder_counter], and save the best decoder to their own folder
+            torch.save(deepsc_encoder_and_channel.state_dict(), fname)
+            torch.save(transformer_decoder_blocks.state_dict(), fname)
             print("saved weights to {}".format(fname))
         
         epoch_end_time = datetime.now()
@@ -235,37 +266,13 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss(reduction='none')
 
-    # Combine all parameters into one list
+    # have different opt for each decoder
+    opt = []
     params = list(deepsc_encoder_and_channel.parameters())
     for decoder in transformer_decoder_blocks:
-        params += list(decoder.parameters())
-
-    # Create the optimizer
-    opt = torch.optim.Adam(params,
-                        lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay=5e-4)
-
-    # opt = torch.optim.Adam(model.parameters(),
-    #                              lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay = 5e-4)
+        params_n = params + list(decoder.parameters())
+        opt.append(torch.optim.Adam(params_n,
+                        lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay=5e-4))
     
     train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, val_loader, pad_idx, device, opt, loss_fn, criterion, args)
 
-
-    
-
-
-    '''
-    # for checking the dataloader for 1 batch input and output
-    i = 0
-    for data in test_loader:
-        for sentences in data:
-            if i < 1:
-                # print(sentences[0][0].cpu().numpy())
-                print(ttc_en.idx2text(sentences[0]))
-                print(ttc_da.idx2text(sentences[1]))
-                # print(len(sentences[0]))
-                # print(len(sentences[1]))
-            else:
-                break
-        i += 1
-    '''
-  
