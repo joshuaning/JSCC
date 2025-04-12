@@ -10,7 +10,7 @@ from datetime import datetime
 from DeepSC_model import *
 import csv
 from preprocess import find_src_lang
-import itertools
+import pandas as pd
 
 
 
@@ -57,58 +57,39 @@ def generate_mask(inputs, labels, pad_idx, device):
 
     return src_mask.contiguous(), combined_mask.contiguous()
 
-def train_batch(data, opt, device, pad_idx, deepsc_encoder_and_channel, decoder, loss_fn, criterion):
-        decoder.train()
-        
+
+def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterion):
+    '''
+    Train iteration for DeepSC_translate
+    returns the avg per patch training loss of current epoch
+    '''
+    encoder.train()
+    decoder.train()
+    total_loss = 0
+    for i, data in tqdm(enumerate(loader)):
         opt.zero_grad()
 
         inputs, labels = data[:, 0, :], data[:, 1, :]
 
         # print("input shape = ", inputs.shape)
         # print("label shape = ", labels.shape)
-        inputs = inputs.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
-        labels = labels.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
+        inputs = inputs.contiguous().to(device = device, dtype=torch.long)
+        labels = labels.contiguous().to(device = device, dtype=torch.long)
 
-        labels_ = labels.contiguous().to(device = device, non_blocking=True).view(-1)
+        labels_ = labels.contiguous().to(device = device).view(-1)
         src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
 
-
-        channel_decoder_output = deepsc_encoder_and_channel(inputs, src_mask)
+        channel_decoder_output = encoder(inputs, src_mask)
         pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
         pred = pred.view(-1, pred.size(-1))
+
         loss = loss_fn(pred, labels_, pad_idx, criterion)
 
         # TODO: train MI Net if needed
-        
+
         loss.backward()
         opt.step()
-        
-        decoder.eval()
-
-        return loss.item()
-
-
-# Array parameters: transformer_decoder_blocks, loader, opt
-def train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, 
-               loader, pad_idx, device, opt, loss_fn, criterion):
-    '''
-    Train iteration for DeepSC_translate
-    returns the avg per patch training loss of current epoch
-    '''
-
-    deepsc_encoder_and_channel.train()
-    total_loss = np.zeros(len(loader))
-    for i, data in tqdm(enumerate(loader[0])):
-        #train decoder for first language
-        total_loss[0] += train_batch(data, opt[0], device, pad_idx, deepsc_encoder_and_channel,
-                                      transformer_decoder_blocks[0], loss_fn, criterion)
-        
-
-        #train decoder for the rest of the language
-        for j in range(1, len(loader)):
-            data = next(iter(loader[j]))
-            total_loss[j] += train_batch(data, opt[j], device, pad_idx, deepsc_encoder_and_channel,
-                                          transformer_decoder_blocks[j], loss_fn, criterion)
+        total_loss += loss.item()
 
     return total_loss / i
 
@@ -124,66 +105,57 @@ def print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2):
             return sentences_ctr
     return sentences_ctr
 
-def val_batch(data, device, pad_idx, deepsc_encoder_and_channel, 
-              decoder, loss_fn, criterion, cur_lang_idx, ttc):
-    #This is bad, but fixing it will be worse. Keep num_to_print <= args.batch-size
-    num_to_print = 5
+def add_row(df, values, languages):
+    # Create a dict with only the columns you want to fill
+    row = {lang: val for lang, val in zip(languages, values)}
+    # Add the row to the DataFrame
+    df.loc[len(df)] = row
+    return df
 
-    inputs, labels = data[:, 0, :], data[:, 1, :]
-    inputs = inputs.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
-    labels = labels.contiguous().to(device = device, dtype=torch.long, non_blocking=True)
-
-    labels_ = labels.contiguous().to(device = device).view(-1)
-    src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
-
-    channel_decoder_output = deepsc_encoder_and_channel(inputs, src_mask)
-    pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
-    pred = pred.view(-1, pred.size(-1))
-    loss = loss_fn(pred, labels_, pad_idx, criterion)
-
-    # print out sample sentences
-    pred = torch.argmax(pred, dim=-1) #get most probable word
-    ttc1 = ttc[0]
-    ttc2 = ttc[cur_lang_idx]
-    sentences_ctr = print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2)
-    return loss.item()
-
-# Array parameters: transformer_decoder_blocks, loader, langs
-def val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, 
-             loader, pad_idx, device, loss_fn, criterion, langs):
+def val_iter(encoder, decoder, loader, pad_idx, device, loss_fn, criterion, src_lang, trg_lang):
     '''
     Evalutate iteration for DeepSC_translate
     returns the avg per patch validation loss of current epoch
-    langs[0] = src lang, all others are destination languages
     '''
-
-    deepsc_encoder_and_channel.eval()
-    transformer_decoder_blocks.eval()
-
-    total_loss = np.zeros(len(loader))
-    ttc = []
-    for lang in langs:
-        ttc.append(TextTokenConverter(lang = lang))
+    
+    encoder.eval()
+    decoder.eval()
+    total_loss = 0
+    ttc1 = TextTokenConverter(lang = src_lang)
+    ttc2 = TextTokenConverter(lang = trg_lang)
+    sentences_ctr = 0
+    num_to_print = 5 #requires num_to_print < batch size
 
     with torch.no_grad():
         for i, data in tqdm(enumerate(loader)):
-                
-            total_loss[0] += val_batch(data, device, pad_idx, deepsc_encoder_and_channel, 
-                                       transformer_decoder_blocks[0], loss_fn, criterion, 1, ttc)
-            
-            #train decoder for the rest of the language
-            for j in range(1, len(loader)):
-                data = next(loader[j])
-                total_loss[j] += val_batch(data, device, pad_idx, deepsc_encoder_and_channel, 
-                                           transformer_decoder_blocks[j], loss_fn, criterion, 
-                                           j+1, ttc)
-            
+
+            inputs, labels = data[:, 0, :], data[:, 1, :]
+            inputs = inputs.contiguous().to(device = device, dtype=torch.long)
+            labels = labels.contiguous().to(device = device, dtype=torch.long)
+
+            labels_ = labels.contiguous().to(device = device).view(-1)
+            src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
+
+            channel_decoder_output = encoder(inputs, src_mask)
+            pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
+
+            pred_ = pred.view(-1, pred.size(-1))
+            loss = loss_fn(pred_, labels_, pad_idx, criterion)
+            total_loss += loss.item()
+
+            pred = torch.argmax(pred, dim=-1) #get most probable word
+            sentences_ctr = print_pred(sentences_ctr, num_to_print, inputs, labels, pred, 
+                                       ttc1, ttc2)
+
     return total_loss / i
 
 # Array parameters: transformer_decoder_blocks, train_loader, val_loader, opt
 def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, 
                val_loader, pad_idx, device, opt, loss_fn, criterion, args, langs, cur_dir):
-    min_loss = [999999999999999]*len(train_loader)
+    
+    #make sure we have consistent amount of languages across the different things we need
+    assert(len(train_loader) == len(val_loader) == len(opt) == len(transformer_decoder_blocks) == len(langs)-1)
+    min_loss = 999999999999999
 
     per_epoch_train_loss = np.array([])
     per_epoch_validation_loss = np.array([])
@@ -192,12 +164,19 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
     for trg_lang in langs[1:]:
         train_telemetry_headers.append("{} train loss".format(trg_lang))
         val_telemetry_headers.append("{} val loss".format(trg_lang))
-    telemetry_headers = train_telemetry_headers + val_telemetry_headers
+    telemetry_df = pd.DataFrame(columns = train_telemetry_headers + val_telemetry_headers)
+    
+    for epoch in range(args.num_epoch):
         
 
+        cur_train_loader = train_loader[epoch % len(train_loader)]
+        # cur_val_loader = val_loader[epoch % len(val_loader)]
+        cur_opt = opt[epoch % len(opt)]
+        cur_trg_lang = langs[1+ epoch % len(opt)]
+        cur_decoder = transformer_decoder_blocks[epoch % len(transformer_decoder_blocks)] 
 
-    for epoch in range(args.num_epoch):
-        print("----------------- starting epoch {} -----------------".format(epoch))
+        print("----------------- starting epoch {} with trg lang {} -----------------".format(epoch, cur_trg_lang))
+
         epoch_start_time = datetime.now()
 
         # added SNR to std calculation, train each epoch with a random SNR
@@ -205,31 +184,51 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
         noise_std = noise_std[0]
         deepsc_encoder_and_channel.change_channel(noise_std, device)
 
-        train_loss = train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks,
-                                train_loader, pad_idx, device, opt, loss_fn, criterion)
-        mean_train_loss = np.mean(train_loss)
+        # train_loss = train_iter(deepsc_encoder_and_channel, transformer_decoder_blocks,
+        #                         train_loader, pad_idx, device, opt, loss_fn, criterion)
+        
+        cur_decoder.to(device)
+        train_loss = train_iter(deepsc_encoder_and_channel, cur_decoder, 
+                                cur_train_loader, pad_idx,
+                                device, cur_opt, loss_fn, criterion)
+        cur_decoder.cpu()
+        
+        telemetry_df.loc[len(telemetry_df)] = {"{} train loss".format(cur_trg_lang): train_loss}
+
+        
         # TODO: train MI NET if needed
+        
         deepsc_encoder_and_channel.change_channel(0.1, device)
-        val_loss = val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, 
-                            val_loader, pad_idx, device, loss_fn, criterion, args, langs)
-        mean_val_loss = np.mean(val_loss)
 
-        #save model during training
-        if(min_loss > mean_val_loss): #save best performing
-            #save encoder
-            fname_encoder = 'best_encoder.pth'
-            fname_encoder =  os.path.join(cur_dir, fname_encoder)
-            torch.save(deepsc_encoder_and_channel.state_dict(), fname_encoder)
-            print("saved best encoder weights to {}".format(fname_encoder))
-
-            #save decoder
+        # val_loss = val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks, 
+        #                     val_loader, pad_idx, device, loss_fn, criterion, args, langs)
+        val_loss = []
+        if epoch % len(train_loader) == len(train_loader) -1: # when 1 cycle of lang is done
             for i, trg_lang in enumerate(langs[1:]):
-                fname_decoder = 'best_decoder_{}.pth'.format(trg_lang)
-                fname_decoder =  os.path.join(cur_dir, fname_decoder)
-                torch.save(transformer_decoder_blocks[i].state_dict(), fname_decoder)
-                print("saved best decoder weights to {}".format(fname_decoder))
-            min_loss = mean_val_loss
-        if(epoch % 10 == 0): #save every 10 epoch just in case
+                transformer_decoder_blocks[i].to(device)
+                val_loss.append(val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks[i],
+                                      val_loader[i], pad_idx, device, loss_fn, criterion, langs[0], trg_lang))
+                transformer_decoder_blocks[i].cpu()
+            mean_val_loss = np.mean(np.array(val_loss))
+            telemetry_df = add_row(telemetry_df, val_loss, val_telemetry_headers)
+        
+            #save model during training
+            if(min_loss > mean_val_loss): #save best performing
+                #save encoder
+                fname_encoder = 'best_encoder.pth'
+                fname_encoder =  os.path.join(cur_dir, fname_encoder)
+                torch.save(deepsc_encoder_and_channel.state_dict(), fname_encoder)
+                print("saved best encoder weights to {}".format(fname_encoder))
+
+                #save decoder
+                for i, trg_lang in enumerate(langs[1:]):
+                    fname_decoder = 'best_decoder_{}.pth'.format(trg_lang)
+                    fname_decoder =  os.path.join(cur_dir, fname_decoder)
+                    torch.save(transformer_decoder_blocks[i].state_dict(), fname_decoder)
+                    print("saved best decoder weights to {}".format(fname_decoder))
+                min_loss = mean_val_loss
+        
+        if(epoch % (3*len(transformer_decoder_blocks)) == 0): #save every 3 full cycle just in case
             #save encoder
             fname_encoder = 'epoch{}_encoder.pth'.format(epoch)
             fname_encoder =  os.path.join(cur_dir, fname_encoder)
@@ -238,7 +237,7 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
 
             #save decoder
             for i, trg_lang in enumerate(langs[1:]):
-                fname_decoder = 'epoch{}_encoder_{}.pth'.format(epoch, trg_lang)
+                fname_decoder = 'epoch{}_decoder_{}.pth'.format(epoch, trg_lang)
                 fname_decoder =  os.path.join(cur_dir, fname_decoder)
                 torch.save(transformer_decoder_blocks[i].state_dict(), fname_decoder)
                 print("saved weights of decoder weights to {}".format(fname_decoder))
@@ -247,19 +246,10 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
         del_time = epoch_end_time - epoch_start_time
         # print some telemetries 
         print("epoch {} took {} minutes to train".format(epoch, del_time.total_seconds()/60))
-        print("mean training loss = {}".format(mean_train_loss))
-        print("mean validation loss = {}".format(mean_val_loss))
 
         #save telemetries to file
         output_csv_path = os.path.join(cur_dir, 'telemetry.csv')
-        per_epoch_train_loss= np.append(per_epoch_train_loss, train_loss, axis=0)
-        per_epoch_validation_loss = np.append(per_epoch_validation_loss, val_loss, axis=0)
-
-        all_loss = np.append(per_epoch_train_loss, per_epoch_validation_loss, axis=1)
-        with open(output_csv_path, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(telemetry_headers)
-            writer.writerows(all_loss)
+        telemetry_df.to_csv(output_csv_path, index=False)
 
 
 
@@ -315,11 +305,6 @@ if __name__ == '__main__':
             
         cur_val_loader = DataLoader(val_set, num_workers=2, batch_size=args.batch_size, 
                                     collate_fn = collate_fn, shuffle=True, pin_memory=True)
-        
-        #make the multi-lang dataloader be able to cycle
-        if i > 1:
-            cur_train_loader= itertools.cycle(iter(cur_train_loader))
-            cur_val_loader = itertools.cycle(iter(cur_val_loader))
             
         train_loader.append(cur_train_loader)
         val_loader.append(cur_val_loader)
