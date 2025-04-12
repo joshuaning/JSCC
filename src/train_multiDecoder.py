@@ -112,7 +112,7 @@ def add_row(df, values, languages):
     df.loc[len(df)] = row
     return df
 
-def val_iter(encoder, decoder, loader, pad_idx, device, loss_fn, criterion, src_lang, trg_lang):
+def val_iter(encoder, decoder, loader, pad_idx, device, loss_fn, criterion, src_lang, trg_lang, args):
     '''
     Evalutate iteration for DeepSC_translate
     returns the avg per patch validation loss of current epoch
@@ -121,8 +121,9 @@ def val_iter(encoder, decoder, loader, pad_idx, device, loss_fn, criterion, src_
     encoder.eval()
     decoder.eval()
     total_loss = 0
-    ttc1 = TextTokenConverter(lang = src_lang)
-    ttc2 = TextTokenConverter(lang = trg_lang)
+    lang_data_dir = os.path.join(args.data_dir, src_lang+'-'+trg_lang)
+    ttc1 = TextTokenConverter(data_dir = lang_data_dir, lang = src_lang)
+    ttc2 = TextTokenConverter(data_dir = lang_data_dir, lang = trg_lang)
     sentences_ctr = 0
     num_to_print = 5 #requires num_to_print < batch size
 
@@ -207,7 +208,7 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
             for i, trg_lang in enumerate(langs[1:]):
                 transformer_decoder_blocks[i].to(device)
                 val_loss.append(val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks[i],
-                                      val_loader[i], pad_idx, device, loss_fn, criterion, langs[0], trg_lang))
+                                      val_loader[i], pad_idx, device, loss_fn, criterion, langs[0], trg_lang, args))
                 transformer_decoder_blocks[i].cpu()
             mean_val_loss = np.mean(np.array(val_loss))
             telemetry_df = add_row(telemetry_df, val_loss, val_telemetry_headers)
