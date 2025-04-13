@@ -285,8 +285,8 @@ if __name__ == '__main__':
     split_languages = set(split_languages)
     src_lang = find_src_lang(lang_pairs)
     split_languages.remove(src_lang)
-    # trg_langs = list(split_languages)
-    trg_langs = ['da', 'es', 'fr']
+    trg_langs = list(split_languages)
+    # trg_langs = ['fr']
     langs = [src_lang] + trg_langs
     num_trg_langs = len(trg_langs)
     
