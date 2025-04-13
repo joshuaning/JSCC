@@ -74,3 +74,23 @@ class TextTokenConverter():
         return len(self.token_to_idx.keys())
 
 
+if __name__ == "__main__":
+    from torch.utils.data import DataLoader
+    from train_multiDecoder import print_pred
+    lang1 = 'en'
+    lang2 = 'es'
+    dir = 'dataset/' + lang1 + '-' + lang2 
+    ds = EuroparlDataset(data_dir = dir, split = 'train', src_lang = lang1, trg_lang = lang2)
+    cur_val_loader = DataLoader(ds, num_workers=2, batch_size=5, 
+                                    collate_fn = collate, shuffle=True, pin_memory=True)
+    tts1 = TextTokenConverter(data_dir = dir, lang = lang1)
+    tts2 = TextTokenConverter(data_dir = dir, lang = lang2)
+
+    batch = next(iter(cur_val_loader))
+    # print(batch)
+    src = batch[:,0,:]
+    trg = batch[:,1,:]
+    print_pred(1, 5, src, trg, trg, tts1, tts2)
+
+
+

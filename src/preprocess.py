@@ -222,26 +222,31 @@ def find_src_lang(languages):
 
     return src_lang
 
-def fix_src_lang_vocab(curr_out_vocab_dir):
-    with open(curr_out_vocab_dir[0]) as f:
-        src_data = json.load(f)
-        src_token_to_idx = src_data['token_to_idx']
+def append_src_lang_vocab(curr_out_vocab_dir, append_vocab):
+    if len(curr_out_vocab_dir) == 1: 
+        vocab = append_vocab
+        print('Number of unique words in vocab: {}'.format(len(vocab['token_to_idx'])))
+    else:
+        with open(curr_out_vocab_dir[0]) as f:
+            src_data = json.load(f)
+            src_token_to_idx = src_data['token_to_idx']
 
-    for i in range(1, len(curr_out_vocab_dir)):
-        with open(curr_out_vocab_dir[i]) as f:
-            trg_data = json.load(f)
-            trg_token_to_idx = trg_data['token_to_idx']
-        for token in trg_token_to_idx.keys():
+        for token in append_vocab['token_to_idx'].keys():
             if token not in src_token_to_idx.keys():
                 src_token_to_idx[token] = len(src_token_to_idx)
-        
-    print('Number of unique words in src vocab: {}'.format(len(src_token_to_idx)))
-
-    vocab = {'token_to_idx': src_token_to_idx}
+            
+        vocab = {'token_to_idx': src_token_to_idx}
+        print('Number of unique words in vocab: {}'.format(len(src_token_to_idx)))
 
     for fname in curr_out_vocab_dir:
         with open(fname, 'w') as f:
             json.dump(vocab, f)
+        print("vocab saved to {}".format(fname))
+    
+    with open('appendvocab.json', 'w') as f:
+        json.dump(append_vocab, f)
+    
+    return vocab
 
 
 def build_europarl(args):
@@ -281,8 +286,6 @@ def build_europarl(args):
             curr_out_test_dir = os.path.join(cur_out_dir, 'test_data.pkl')
             curr_out_vocab_dir = os.path.join(cur_out_dir, 'vocab.json')
 
-            if curr_lang == src_lang:
-                src_lang_vocab_pths.append(curr_out_vocab_dir)
 
             # build & save vocabulary:
             print("building vocab for {} ---------------------------".format(curr_lang))
@@ -291,10 +294,19 @@ def build_europarl(args):
             vocab = {}
             token_to_idx = build_vocab(sentences, token_to_idx=tkns)
             vocab = {'token_to_idx': token_to_idx}
-            print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
-            with open(curr_out_vocab_dir, 'w') as f:
-                json.dump(vocab, f)
-            print("vocab saved to {}".format(curr_out_vocab_dir))
+
+            if curr_lang == src_lang:
+                src_lang_vocab_pths.append(curr_out_vocab_dir)
+
+                vocab_merged = append_src_lang_vocab(src_lang_vocab_pths, vocab)
+                vocab = {}
+                vocab = vocab_merged
+                token_to_idx = vocab_merged['token_to_idx']
+            else:
+                print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
+                with open(curr_out_vocab_dir, 'w') as f:
+                    json.dump(vocab, f)
+                print("vocab saved to {}".format(curr_out_vocab_dir))
 
             # encode
             print("Begin to encode sentences")
@@ -323,13 +335,9 @@ def build_europarl(args):
             lang_counter += 1
     
     #fix the src lang vocab
-    if len(curr_out_vocab_dir) <= 1: return
-    print("start fixing src language vocab files")
-    fix_src_lang_vocab(src_lang_vocab_pths)
-
-
-        
-
+    # if len(curr_out_vocab_dir) <= 1: return
+    # print("start fixing src language vocab files")
+    # fix_src_lang_vocab(src_lang_vocab_pths)
 
 
 def build_flores101(args):

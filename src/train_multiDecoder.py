@@ -192,7 +192,9 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
         train_loss = train_iter(deepsc_encoder_and_channel, cur_decoder, 
                                 cur_train_loader, pad_idx,
                                 device, cur_opt, loss_fn, criterion)
-        cur_decoder.cpu()
+        cur_decoder.to("cpu")
+        transformer_decoder_blocks[epoch % len(transformer_decoder_blocks)] = cur_decoder
+        del cur_decoder
         
         telemetry_df.loc[len(telemetry_df)] = {"{} train loss".format(cur_trg_lang): train_loss}
 
@@ -209,7 +211,7 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
                 transformer_decoder_blocks[i].to(device)
                 val_loss.append(val_iter(deepsc_encoder_and_channel, transformer_decoder_blocks[i],
                                       val_loader[i], pad_idx, device, loss_fn, criterion, langs[0], trg_lang, args))
-                transformer_decoder_blocks[i].cpu()
+                transformer_decoder_blocks[i].to("cpu")
             mean_val_loss = np.mean(np.array(val_loss))
             telemetry_df = add_row(telemetry_df, val_loss, val_telemetry_headers)
         
@@ -283,7 +285,8 @@ if __name__ == '__main__':
     split_languages = set(split_languages)
     src_lang = find_src_lang(lang_pairs)
     split_languages.remove(src_lang)
-    trg_langs = list(split_languages)
+    # trg_langs = list(split_languages)
+    trg_langs = ['da', 'es', 'fr']
     langs = [src_lang] + trg_langs
     num_trg_langs = len(trg_langs)
     
