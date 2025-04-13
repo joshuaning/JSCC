@@ -353,13 +353,151 @@ class DeepSC(nn.Module):
         return x
 
 
+### --- An Attempt to make DeepSC more Modular --- ##
+
+
+## Encoder + Channel + Channel Decoder
+class DeepSC_ECCD(nn.Module):
+    def __init__(self, encoder: Encoder, src_embedding: InputEmbeddings, src_pos: PositionalEncoding,
+                 channel_encoder: ChannelEncoder, channel: AWGNChannel, channel_decoder: ChannelDecoder):
+        super().__init__()
+        self.encoder = encoder
+        self.src_embedding = src_embedding
+        self.src_pos = src_pos
+        self.channel_encoder = channel_encoder
+        self.channel = channel
+        self.channel_decoder = channel_decoder
+
+    def change_channel(self, noise_std, device):
+        self.channel = AWGNChannel(noise_std=noise_std, device=device)
+
+    def encode(self, src, src_mask):
+        src = self.src_embedding(src)
+        src = self.src_pos(src)
+        
+        return self.encoder(src, src_mask)
+    
+    def channel_encode(self, encoder_out):
+        return self.channel_encoder(encoder_out)
+    
+    def channel_transmit(self, in_sig):
+        return self.channel(in_sig)
+    
+    def channel_decode(self, in_sig):
+        return self.channel_decoder(in_sig)
+    
+    def forward(self, src, src_mask):
+        x = self.encode(src, src_mask)
+        x = self.channel_encode(x)
+        x = self.channel_transmit(x)
+        x = self.channel_decode(x)
+        return x
+    
+# Decoder, just a typical transformer decoder
+class Transformer_Decoder(nn.Module):
+    def __init__(self, decoder: Decoder, tgt_embedding: InputEmbeddings, tgt_pos: PositionalEncoding,
+                 projection_layer: ProjectionLayer):
+        
+        super().__init__()
+        self.decoder = decoder
+        self.tgt_embedding = tgt_embedding
+        self.tgt_pos = tgt_pos
+        self.projection_layer = projection_layer
+
+    
+    def decode(self, encoder_out, src_mask, tgt, tgt_mask):
+        tgt = self.tgt_embedding(tgt)
+        tgt = self.tgt_pos(tgt)
+
+        return self.decoder(tgt, encoder_out, src_mask, tgt_mask)
+    
+    def project(self, x):
+        return self.projection_layer(x)
+    
+    def forward(self, x, src_mask, tgt, tgt_mask):
+        x = self.decode(x, src_mask, tgt, tgt_mask)
+        x = self.project(x)
+        return x
+    
+# vector input: tgt_vocab_size, each element must be an int
+# (I don't want to import list, so we don't check for types hehe)
+def Build_MultiDecoder_DeepSC(num_decoders: int, src_vocab_size: int, 
+                     tgt_vocab_size, src_seq_len: int, tgt_seq_len: int, device,
+                     d_model:int=128, N:int=4, h:int=8, dropout:float=0.1,
+                     d_ff:int=512, noise_std:float = 0.1 )->DeepSC:
+    
+    #create the Input embedding layer
+    src_embed = InputEmbeddings(d_model, src_vocab_size)
+
+    #create the positional encoding layers  (They should be the same?)
+    src_pos = PositionalEncoding(d_model, src_seq_len, dropout)
+    tgt_pos = PositionalEncoding(d_model, tgt_seq_len, dropout)
+
+    #create the encoder blocks
+    encoder_blocks = []
+    for _ in range(N):
+        encoder_self_attention_block = MultiHeadAttention(d_model, h, dropout)
+        feed_forward_block = FeedForward(d_model, d_ff, dropout)
+        encoder_block = EncoderBlock(encoder_self_attention_block, feed_forward_block, dropout)
+        encoder_blocks.append(encoder_block)
+
+    #create the decoder blocks
+    decoder_blocks = []
+
+    for _ in range(N):
+        decoder_self_attention_block = MultiHeadAttention(d_model, h, dropout)
+        decoder_cross_attention_block = MultiHeadAttention(d_model, h, dropout)
+        feed_forward_block = FeedForward(d_model, d_ff, dropout)
+        decoder_block = DecoderBlock(decoder_self_attention_block, decoder_cross_attention_block, feed_forward_block, dropout)
+
+        decoder_blocks.append(decoder_block)
+
+    # create the encoder and the decoder
+    encoder = Encoder(nn.ModuleList(encoder_blocks))
+    decoder = Decoder(nn.ModuleList(decoder_blocks))
+
+
+    # create channel related layers
+    channel_encoder = ChannelEncoder(d_model, l1_size=256, out_size=16)
+    awgn_channel = AWGNChannel(noise_std=noise_std, device=device)
+    channel_decoder = ChannelDecoder(in_size=16, l1_size=d_model, l2_size=512)
+
+    # create 1 encoder and channel
+    deepsc_encoder_and_channel = DeepSC_ECCD(encoder, src_embed, src_pos, channel_encoder, awgn_channel, channel_decoder)
+    deepsc_encoder_and_channel.to(device)
+
+    # create num_decoders of decoders
+    transformer_decoder_blocks = []
+    for j in range(num_decoders):
+        #create the target embedding layer and the projection layer for the decoders
+        tgt_embed = InputEmbeddings(d_model, tgt_vocab_size[j])
+        projection_layer = ProjectionLayer(d_model, tgt_vocab_size[j])
+
+        transformer_decoder = Transformer_Decoder(decoder, tgt_embed, tgt_pos, projection_layer)
+        transformer_decoder_blocks.append(transformer_decoder.to(device))
+
+    # Init params
+    for p in deepsc_encoder_and_channel.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+
+    for i in range(len(transformer_decoder_blocks)):
+        for p in transformer_decoder_blocks[i].parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+            # 1 encoder + channel       an array of decoders
+    return deepsc_encoder_and_channel, transformer_decoder_blocks
+
+
+## --- END Modularity Attempt ---
     
 ###
 ''' Big Transfomer parameters
 d_model:int=512, N:int=6, h:int=8, dropout:float=0.1,
                      d_ff:int=2048, noise_std:float = 0.1 )->DeepSC:
 '''
-###
+### Build Simple DeepSC
 def Build_DeepSC(src_vocab_size: int, tgt_vocab_size: int,
                      src_seq_len: int, tgt_seq_len: int, device,
                      d_model:int=128, N:int=4, h:int=8, dropout:float=0.1,
