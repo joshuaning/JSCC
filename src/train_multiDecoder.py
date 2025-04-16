@@ -22,7 +22,7 @@ parser.add_argument('--num-epoch', default=80, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
 # parser.add_argument('--src-lang', default='en', type=str)
 # parser.add_argument('--trg-lang', default='da', type=str)
-parser.add_argument('--lang-pairs', default='da-en_en-fr_en-es', type=str)
+parser.add_argument('--lang-pairs', default='en-it', type=str)
 parser.add_argument('--data-dir', default='dataset', type=str)
 
 

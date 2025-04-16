@@ -23,7 +23,7 @@ parser.add_argument('--model-out-dir', default='weights', type=str)
 # parser.add_argument('--trg-lang', default='da', type=str)
 parser.add_argument('--lang-pairs', default='en-it', type=str) # only put one lang pair for this
 parser.add_argument('--data-dir', default='dataset', type=str)
-parser.add_argument('--encoder-pth', default='weights\\04_13_2025__12_36_54\\best_encoder.pth', type=str)
+parser.add_argument('--encoder-pth', default='weights\\04_13_2025__00_46_19\\best_encoder.pth', type=str)
 
 
 def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterion):
