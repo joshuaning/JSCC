@@ -11,51 +11,19 @@ from DeepSC_model import *
 import csv
 from preprocess import find_src_lang
 import pandas as pd
-
-
+from train_multiDecoder import loss_fn, generate_mask, add_row, val_iter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--MAX-LENGTH', default=27, type=int)
 parser.add_argument('--batch-size', default=128, type=int)
 parser.add_argument('--num-lang', default=2, type=int)
-parser.add_argument('--num-epoch', default=80, type=int)
+parser.add_argument('--num-epoch', default=30, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
 # parser.add_argument('--src-lang', default='en', type=str)
 # parser.add_argument('--trg-lang', default='da', type=str)
-parser.add_argument('--lang-pairs', default='da-en_en-fr_en-es', type=str)
+parser.add_argument('--lang-pairs', default='en-it', type=str) # only put one lang pair for this
 parser.add_argument('--data-dir', default='dataset', type=str)
-
-
-
-
-def loss_fn(pred, label, pad_idx, criterion):
-    # print(pred.shape)
-    # print(label.shape)
-    loss = criterion(pred, label) * (label != pad_idx).to(torch.float32)
-    return loss.mean()
-
-def generate_mask(inputs, labels, pad_idx, device):
-    '''
-    inputs of shape [batch_size, seq_len]
-    labels of shape [batch_size, labels]
-
-    src_mask of shape [batch_size, 1, seq_len]
-    combined_mask of shape [batch_size, seq_len, seq_len]
-
-    in the masks, 1 represent masked, 0 represent transparent 
-    '''
-
-    src_mask = (inputs != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device, non_blocking=True)
-    lab_mask = (labels != pad_idx).unsqueeze(-2).to(dtype=torch.float32, device=device, non_blocking=True)
-    attn_size = (1, inputs.size()[-1], inputs.size()[-1])
-    # attn_size = (inputs.size(0), 1, inputs.size(1))
-
-    #lower triangle is masked for causality
-    causual_mask = torch.tril(torch.ones(attn_size))
-    causual_mask = causual_mask.to(dtype=torch.float32, device=device)
-    combined_mask = torch.min(lab_mask, causual_mask)
-
-    return src_mask.contiguous(), combined_mask.contiguous()
+parser.add_argument('--encoder-pth', default='weights\\04_13_2025__12_36_54\\best_encoder.pth', type=str)
 
 
 def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterion):
@@ -63,7 +31,7 @@ def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterio
     Train iteration for DeepSC_translate
     returns the avg per patch training loss of current epoch
     '''
-    encoder.train()
+    encoder.eval()
     decoder.train()
     total_loss = 0
     for i, data in tqdm(enumerate(loader)):
@@ -93,63 +61,6 @@ def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterio
 
     return total_loss / i
 
-def print_pred(sentences_ctr, num_to_print, inputs, labels, pred, ttc1, ttc2):
-    for i, sentences in enumerate(pred):
-        if sentences_ctr < num_to_print:
-            print("src lang =       ", ttc1.idx2text(inputs[i]))
-            print("trg lang =       ", ttc2.idx2text(sentences))
-            print("trg lang gt =    ", ttc2.idx2text(labels[i]))
-            print("\n")
-            sentences_ctr += 1
-        else:
-            return sentences_ctr
-    return sentences_ctr
-
-def add_row(df, values, languages):
-    # Create a dict with only the columns you want to fill
-    row = {lang: val for lang, val in zip(languages, values)}
-    # Add the row to the DataFrame
-    df.loc[len(df)] = row
-    return df
-
-def val_iter(encoder, decoder, loader, pad_idx, device, loss_fn, criterion, src_lang, trg_lang, args):
-    '''
-    Evalutate iteration for DeepSC_translate
-    returns the avg per patch validation loss of current epoch
-    '''
-    
-    encoder.eval()
-    decoder.eval()
-    total_loss = 0
-    lang_data_dir = os.path.join(args.data_dir, src_lang+'-'+trg_lang)
-    ttc1 = TextTokenConverter(data_dir = lang_data_dir, lang = src_lang)
-    ttc2 = TextTokenConverter(data_dir = lang_data_dir, lang = trg_lang)
-    sentences_ctr = 0
-    num_to_print = 5 #requires num_to_print < batch size
-
-    with torch.no_grad():
-        for i, data in tqdm(enumerate(loader)):
-
-            inputs, labels = data[:, 0, :], data[:, 1, :]
-            inputs = inputs.contiguous().to(device = device, dtype=torch.long)
-            labels = labels.contiguous().to(device = device, dtype=torch.long)
-
-            labels_ = labels.contiguous().to(device = device).view(-1)
-            src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
-
-            channel_decoder_output = encoder(inputs, src_mask)
-            pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
-
-            pred_ = pred.view(-1, pred.size(-1))
-            loss = loss_fn(pred_, labels_, pad_idx, criterion)
-            total_loss += loss.item()
-
-            pred = torch.argmax(pred, dim=-1) #get most probable word
-            sentences_ctr = print_pred(sentences_ctr, num_to_print, inputs, labels, pred, 
-                                       ttc1, ttc2)
-
-    return total_loss / i
-
 # Array parameters: transformer_decoder_blocks, train_loader, val_loader, opt
 def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader, 
                val_loader, pad_idx, device, opt, loss_fn, criterion, args, langs, cur_dir):
@@ -161,8 +72,8 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
     train_telemetry_headers = []
     val_telemetry_headers = []
     for trg_lang in langs[1:]:
-        train_telemetry_headers.append("{} train loss".format(trg_lang))
-        val_telemetry_headers.append("{} val loss".format(trg_lang))
+        train_telemetry_headers.append("{} train loss fine tune".format(trg_lang))
+        val_telemetry_headers.append("{} val loss fine tune".format(trg_lang))
     telemetry_df = pd.DataFrame(columns = train_telemetry_headers + val_telemetry_headers)
     
     for epoch in range(args.num_epoch):
@@ -229,7 +140,7 @@ def train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loa
                     print("saved best decoder weights to {}".format(fname_decoder))
                 min_loss = mean_val_loss
         
-        if(epoch % (3*len(transformer_decoder_blocks)) == 0): #save every 3 full cycle just in case
+        if(epoch % (5*len(transformer_decoder_blocks)) == 0): #save every 3 full cycle just in case
             #save encoder
             fname_encoder = 'epoch{}_encoder.pth'.format(epoch)
             fname_encoder =  os.path.join(cur_dir, fname_encoder)
@@ -284,10 +195,11 @@ if __name__ == '__main__':
     src_lang = find_src_lang(lang_pairs)
     split_languages.remove(src_lang)
     trg_langs = list(split_languages)
-    # trg_langs = ['fr']
+    # src_langs = ["en"]
+    # trg_langs = ['it']
     langs = [src_lang] + trg_langs
     num_trg_langs = len(trg_langs)
-    
+
     print('source language = {}'.format(src_lang))
     print('target language = ', trg_langs)
     
@@ -316,7 +228,6 @@ if __name__ == '__main__':
     
     src_vocab_size = ttc_src.get_vocab_size()
 
-    # vector input: tgt_vocab_size, each element must be an int
     deepsc_encoder_and_channel, transformer_decoder_blocks = Build_MultiDecoder_DeepSC(
                                                 num_decoders = num_trg_langs, 
                                                 src_vocab_size = src_vocab_size, 
@@ -324,12 +235,14 @@ if __name__ == '__main__':
                                                 device=device, 
                                                 src_seq_len = args.MAX_LENGTH, 
                                                 tgt_seq_len = args.MAX_LENGTH)
-    
-    pad_idx = ttc_trg.get_pad_idx()
 
+    check_point = {'model_state_dict':torch.load(args.encoder_pth, map_location=torch.device(device))}
+    deepsc_encoder_and_channel.load_state_dict(check_point['model_state_dict'])
+
+    pad_idx = ttc_trg.get_pad_idx()
     criterion = nn.CrossEntropyLoss(reduction='none')
 
-    # have different opt for each decoder
+
     opt = []
     params = list(deepsc_encoder_and_channel.parameters())
     for decoder in transformer_decoder_blocks:
@@ -339,4 +252,3 @@ if __name__ == '__main__':
     
     train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader,
                 val_loader, pad_idx, device, opt, loss_fn, criterion, args, langs, cur_dir)
-
