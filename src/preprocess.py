@@ -14,14 +14,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--input-data-dir', default='C:/Users/Joshua Ning/Documents/Dataset/europarl', type=str)
 parser.add_argument('--output-dir', default='dataset/', type=str)
 parser.add_argument('--train-test-split', default=0.9, type=float)
-# parser.add_argument('--lang1', default='da', type=str)
-# parser.add_argument('--lang2', default='en', type=str)
 
-parser.add_argument('--lang-pairs', default='da-en_en-fr_en-es', type=str)
+# parser.add_argument('--lang-pairs', default='da-en_en-fr_en-es', type=str)
+parser.add_argument('--lang-pairs', default='en-it', type=str)
 
-# parser.add_argument('--multilang', default='eng-swe-dan-spa', type=str)
-# parser.add_argument('--multilang-input-data-dir', default='C:/Users/Joshua Ning/Documents/Dataset/flores101_dataset', type=str)
-# parser.add_argument('--multilang-out-dir', default='dataset/multilang/', type=str)
+# ATTENTION:: set to '' if want to build vocab from scratch
+parser.add_argument('--use-src-vocab', default='dataset\\en-da\\en\\vocab.json', type=str) 
+
 
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
 parser.add_argument('--MAX-LENGTH', default=25, type=int)
@@ -205,22 +204,24 @@ def build_vocab(sequences, token_to_idx = {}, delim=' ', punct_to_remove=None):
 
 def find_src_lang(languages):
     '''
-    requires languages to be a list of language pairs in the following format:
-    example: ['a-b', 'a-c', 'd-a', ... ]. where a, b, c, d, are languages 
-    returns the common language in the list of strings
+    Requires `languages` to be a list of language pairs in the format:
+    ['a-b', 'a-c', 'd-a', ...], where a, b, c, d are language codes.
+    
+    Returns the common language that appears in all pairs.
+    If there is only one pair, returns the first language in that pair.
     '''
 
-    split_languages = [lang_pair.split('-') for lang_pair in languages]
+    if not languages:
+        return None
 
-    # Find the intersection of the lists (common language across all pairs)
-    common_languages = set(split_languages[0])
-    for lang_pair in split_languages[1:]:
-        common_languages.intersection_update(lang_pair)
+    if len(languages) == 1:
+        return languages[0].split('-')[0]
 
-    # The common language will be in the intersection
-    src_lang = common_languages.pop() if common_languages else None
-
-    return src_lang
+    split_languages = [set(pair.split('-')) for pair in languages]
+    
+    common_languages = set.intersection(*split_languages)
+    
+    return common_languages.pop() if common_languages else None
 
 def append_src_lang_vocab(curr_out_vocab_dir, append_vocab):
     if len(curr_out_vocab_dir) == 1: 
@@ -259,11 +260,12 @@ def build_europarl(args):
     
         lang1, lang2 = lang_pair.split('-')
 
-        lang_names = [lang1, lang2]
-
         #guarentee src lang is the first 
         if src_lang == lang1: src_first = src_lang + '-' + lang2
         else: src_first = src_lang + '-' + lang1
+
+        lang1, lang2 = src_first.split('-')
+        lang_names = [lang1, lang2]
 
         print("extracting sentences---------------------------")
         input_folder = os.path.join(args.input_data_dir, lang_pair)
@@ -297,11 +299,23 @@ def build_europarl(args):
 
             if curr_lang == src_lang:
                 src_lang_vocab_pths.append(curr_out_vocab_dir)
+                if args.use_src_vocab == '':
+                    vocab_merged = append_src_lang_vocab(src_lang_vocab_pths, vocab)
+                    vocab = {}
+                    vocab = vocab_merged
+                    token_to_idx = vocab_merged['token_to_idx']
+                else:
+                    with open(args.use_src_vocab) as f:
+                        print("loading src vocab from: ", args.use_src_vocab)
+                        vocab = {}
+                        vocab_load = json.load(f)
+                    vocab =  vocab_load
+                    token_to_idx = vocab_load['token_to_idx']
+                    print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
+                    with open(curr_out_vocab_dir, 'w') as f:
+                        json.dump(vocab, f)
+                    print("vocab saved to {}".format(curr_out_vocab_dir))
 
-                vocab_merged = append_src_lang_vocab(src_lang_vocab_pths, vocab)
-                vocab = {}
-                vocab = vocab_merged
-                token_to_idx = vocab_merged['token_to_idx']
             else:
                 print('Number of unique words in vocab: {}'.format(len(token_to_idx)))
                 with open(curr_out_vocab_dir, 'w') as f:
@@ -311,10 +325,35 @@ def build_europarl(args):
             # encode
             print("Begin to encode sentences")
             results = []
-            for seq in tqdm(sentences):
-                words = tokenize(seq)
-                tokens = [token_to_idx[word] for word in words]
-                results.append(tokens)
+            idx_to_del = []
+            if args.use_src_vocab == '' or curr_lang != src_lang:
+                for seq in tqdm(sentences):
+                    words = tokenize(seq)
+                    tokens = [token_to_idx[word] for word in words]
+                    results.append(tokens)
+            else:
+                idx_to_del = set()
+                results = []
+
+                for sent_i, seq in enumerate(tqdm(sentences)):
+                    words = tokenize(seq)
+                    tokens = []
+                    skip = False
+                    for word in words:
+                        try:
+                            word_tkn = token_to_idx[word]
+                            tokens.append(word_tkn)
+                        except KeyError:
+                            idx_to_del.add(sent_i)
+                            skip = True
+                            break  # skip rest of the words in this sentence
+                    if not skip:
+                        results.append(tokens)
+
+                print("len of idx to del = ", len(idx_to_del))
+                for i in sorted(idx_to_del, reverse=True):
+                    del sentence_pairs[1][i]
+                # del sentence_pairs[1][idx_to_del]
             # np.array(results)
 
             # select and write data for training and testing
