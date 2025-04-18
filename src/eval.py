@@ -3,7 +3,7 @@ from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from jiwer import wer
 
 
-# Compute the BLEU score for a single sentence.
+# Compute the BLEU score for a single sentence.s
 def compute_bleu(reference: str, hypothesis: str) -> float:
     reference_tokens = reference.strip().split()
     hypothesis_tokens = hypothesis.strip().split()
@@ -15,22 +15,11 @@ def compute_bleu(reference: str, hypothesis: str) -> float:
 def compute_wer(reference: str, hypothesis: str) -> float:
     return wer(reference, hypothesis)
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate BLEU and WER between reference and hypothesis sentences.")
-    parser.add_argument("--reference", type=str, required=True, help="Reference sentence (ground truth).")
-    parser.add_argument("--hypothesis", type=str, required=True, help="Hypothesis sentence (model output).")
-    args = parser.parse_args()
 
-    bleu = compute_bleu(args.reference, args.hypothesis)
-    word_error_rate = compute_wer(args.reference, args.hypothesis)
-
-    print(f"BLEU Score: {bleu:.4f}")
-    print(f"Word Error Rate (WER): {word_error_rate:.4f}")
 
 if __name__ == "__main__":
-    main()
 
-
+    a = 1
 ## tested with 
 '''
 python eval.py --reference "The quick brown fox jumps over the lazy dog" \
