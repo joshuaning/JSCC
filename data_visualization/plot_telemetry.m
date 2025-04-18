@@ -1,5 +1,5 @@
 %% danish
-da_single_lang = readmatrix("04_06_2025_single_language_telemetry_da");
+da_single_lang = readmatrix("../telemetry_data/04_06_2025_single_language_telemetry_da");
 
 train_loss_da = da_single_lang(1, :);
 eval_loss_da = da_single_lang(2, :);
@@ -19,7 +19,7 @@ grid on;
 
 %% French
 
-fr_single_lang = readmatrix("04_13_2020_single_language_telemetry_fr");
+fr_single_lang = readmatrix("../telemetry_data/04_13_2020_single_language_telemetry_fr");
 
 train_loss_fr = fr_single_lang(1:2:end, 1);
 eval_loss_fr = fr_single_lang(2:2:end, 2);
@@ -40,7 +40,7 @@ grid on;
 
 %% Multi Language
 
-multi_lang = readmatrix("04_13_2025_multi_language_telemetry");
+multi_lang = readmatrix("../telemetry_data/04_13_2025_multi_language_telemetry");
 
 train_loss_da_m = multi_lang(1:4:end, 1);
 train_loss_es_m = multi_lang(2:4:end, 2);
@@ -116,6 +116,49 @@ title('Comparison Danish & French single Vs multi decoder');
 legend('Danish Single', 'Franch Single', 'Danish Multi', 'Franch Multi');
 grid on;
 xlim([0 30]);
+
+%% Comparison Part II - fine tuning
+
+%load all data
+it_multi_decode = readmatrix("../telemetry_data/04_15_2025_finetune_from_multi_decoder_telemetry");
+it_single_decode = readmatrix("../telemetry_data/04_15_2025_finetune_from_single_decoder_telemetry");
+it_normal = readmatrix("../telemetry_data/04_15_2025_single_language_telemetry_it");
+
+eval_it_multi_decode = it_multi_decode(:, 2);
+eval_it_single_decode = it_single_decode(:, 2);
+eval_it_normal = it_normal(2:2:end, 2);
+eval_it_normal = eval_it_normal(1:1:30);
+
+epochs_comp = 1:30;
+
+plot(epochs_comp, eval_it_multi_decode, '-o', 'LineWidth', 1.5);
+hold on;
+plot(epochs_comp, eval_it_single_decode, '-o', 'LineWidth', 1.5);
+hold on;
+plot(epochs_comp, eval_it_normal, '-o', 'LineWidth', 1.5);
+
+xlabel('Epoch');
+ylabel('Evaluation Loss');
+title('Comparison of Training W/WO Transfer Learning Methods');
+legend('our method', 'transfer learning', 'baseline');
+grid on;
+
+
+%%
+epochs_f = 1:length(eval_it_multi_decode);
+
+figure;
+plot(epochs_f, train_loss_fr, '-o', 'LineWidth', 1.5);
+hold on;
+plot(epochs_f, eval_loss_fr, '-s', 'LineWidth', 1.5);
+
+xlabel('Epoch');
+ylabel('Loss');
+title('Training and Evaluation Loss of single decoder (FR)');
+legend('Train Loss', 'Eval Loss');
+grid on;
+
+
 
 %% Save files
 

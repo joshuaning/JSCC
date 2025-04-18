@@ -244,9 +244,9 @@ if __name__ == '__main__':
 
 
     opt = []
-    params = list(deepsc_encoder_and_channel.parameters())
+    # params = list(deepsc_encoder_and_channel.parameters())
     for decoder in transformer_decoder_blocks:
-        params_n = params + list(decoder.parameters())
+        params_n = list(decoder.parameters())
         opt.append(torch.optim.Adam(params_n,
                         lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay=5e-4))
     
