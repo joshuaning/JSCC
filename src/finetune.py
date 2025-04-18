@@ -23,7 +23,7 @@ parser.add_argument('--model-out-dir', default='weights', type=str)
 # parser.add_argument('--trg-lang', default='da', type=str)
 parser.add_argument('--lang-pairs', default='en-it', type=str) # only put one lang pair for this
 parser.add_argument('--data-dir', default='dataset', type=str)
-parser.add_argument('--encoder-pth', default='weights\\04_13_2025__00_46_19\\best_encoder.pth', type=str)
+parser.add_argument('--encoder-pth', default='weights/04_13_2025__00_46_19/epoch54_encoder.pth', type=str)
 
 
 def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterion):
@@ -31,7 +31,7 @@ def train_iter(encoder, decoder, loader, pad_idx, device, opt, loss_fn, criterio
     Train iteration for DeepSC_translate
     returns the avg per patch training loss of current epoch
     '''
-    encoder.eval()
+    encoder.train()
     decoder.train()
     total_loss = 0
     for i, data in tqdm(enumerate(loader)):
@@ -245,10 +245,23 @@ if __name__ == '__main__':
 
     opt = []
     # params = list(deepsc_encoder_and_channel.parameters())
+
+    for param in deepsc_encoder_and_channel.parameters():
+        param.requires_grad = False
+
     for decoder in transformer_decoder_blocks:
         params_n = list(decoder.parameters())
         opt.append(torch.optim.Adam(params_n,
                         lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay=5e-4))
+        
+    for name, param in deepsc_encoder_and_channel.named_parameters():
+        if param.requires_grad:
+            print(f"Trainable layer in encoder: {name}")
+    
+    for name, param in transformer_decoder_blocks[0].named_parameters():
+        if param.requires_grad:
+            print(f"Trainable layer in decoder: {name}")
+
     
     train_loop(deepsc_encoder_and_channel, transformer_decoder_blocks, train_loader,
                 val_loader, pad_idx, device, opt, loss_fn, criterion, args, langs, cur_dir)
