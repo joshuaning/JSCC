@@ -3,4 +3,4 @@
 __pycache__/
 /weights
 *.asv
-
+/inference_results
