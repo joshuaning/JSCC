@@ -131,6 +131,7 @@ eval_it_normal = eval_it_normal(1:1:30);
 
 epochs_comp = 1:30;
 
+figure()
 plot(epochs_comp, eval_it_multi_decode, '-o', 'LineWidth', 1.5);
 hold on;
 plot(epochs_comp, eval_it_single_decode, '-o', 'LineWidth', 1.5);
@@ -142,22 +143,6 @@ ylabel('Evaluation Loss');
 title('Comparison of Training W/WO Transfer Learning Methods');
 legend('our method', 'transfer learning', 'baseline');
 grid on;
-
-
-%%
-epochs_f = 1:length(eval_it_multi_decode);
-
-figure;
-plot(epochs_f, train_loss_fr, '-o', 'LineWidth', 1.5);
-hold on;
-plot(epochs_f, eval_loss_fr, '-s', 'LineWidth', 1.5);
-
-xlabel('Epoch');
-ylabel('Loss');
-title('Training and Evaluation Loss of single decoder (FR)');
-legend('Train Loss', 'Eval Loss');
-grid on;
-
 
 
 %% Save files
