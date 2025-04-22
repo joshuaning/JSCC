@@ -13,9 +13,10 @@ from train_multiDecoder import *
 import re
 
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--MAX-LENGTH', default=27, type=int)
-parser.add_argument('--batch-size', default=128, type=int)
+parser.add_argument('--batch-size', default=1, type=int)
 parser.add_argument('--num-lang', default=2, type=int)
 parser.add_argument('--num-epoch', default=80, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
@@ -59,6 +60,8 @@ def inference(encoder, decoder, loader, pad_idx, device, src_lang, trg_lang, arg
     ttc2 = TextTokenConverter(data_dir = lang_data_dir, lang = trg_lang)
     label_sents = []
     pred_sents = []
+    encoder_time = []
+    decoder_time = []
 
     with torch.no_grad():
         for i, data in tqdm(enumerate(loader)):
@@ -69,13 +72,31 @@ def inference(encoder, decoder, loader, pad_idx, device, src_lang, trg_lang, arg
 
             src_mask, combined_mask = generate_mask(inputs, labels, pad_idx, device)
 
+            encoder_start_time = datetime.now()
             channel_decoder_output = encoder(inputs, src_mask)
+            encoder_end_time = datetime.now()
+
+            decoder_start_time = datetime.now()
             pred = decoder(channel_decoder_output, src_mask, labels, combined_mask)
+            decoder_end_time = datetime.now()
+
+            delta_enc = encoder_end_time - encoder_start_time
+            delta_dec = decoder_end_time - decoder_start_time
+            # delta_enc = delta_enc.total_seconds()
+
+            encoder_time.append(delta_enc.total_seconds())
+            decoder_time.append(delta_dec.total_seconds())
 
             pred = torch.argmax(pred, dim=-1) #get most probable word
             sents_out = output_pred(labels, pred, ttc2)
             label_sents += sents_out[0]
             pred_sents += sents_out[1]
+
+            # if i == 10000:
+            #     break
+    
+    print("mean encoding time in seconds: ", np.mean(np.array(encoder_time)))
+    print("mean decoding time in seconds: ", np.mean(np.array(decoder_time)))
     
     return label_sents, pred_sents
 

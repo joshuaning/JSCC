@@ -1,0 +1,248 @@
+Folder PATH listing
+|   .gitignore
+|   readme.md
+|
++---dataset
+|   +---en-da
+|   |   +---da
+|   |   |       test_data.pkl
+|   |   |       train_data.pkl
+|   |   |       vocab.json
+|   |   |       
+|   |   \---en
+|   |           test_data.pkl
+|   |           train_data.pkl
+|   |           vocab.json
+|   |           
+|   +---en-es
+|   |   +---en
+|   |   |       test_data.pkl
+|   |   |       train_data.pkl
+|   |   |       vocab.json
+|   |   |       
+|   |   \---es
+|   |           test_data.pkl
+|   |           train_data.pkl
+|   |           vocab.json
+|   |           
+|   +---en-fr
+|   |   +---en
+|   |   |       test_data.pkl
+|   |   |       train_data.pkl
+|   |   |       vocab.json
+|   |   |       
+|   |   \---fr
+|   |           test_data.pkl
+|   |           train_data.pkl
+|   |           vocab.json
+|   |           
+|   \---en-it
+|       +---en
+|       |       test_data.pkl
+|       |       train_data.pkl
+|       |       vocab.json
+|       |       
+|       \---it
+|               test_data.pkl
+|               train_data.pkl
+|               vocab.json
+|               
++---data_visualization
+|   |   plot_telemetry.m
+|   |   
+|   \---saved_figure
+|           figure_1.svg
+|           figure_2.svg
+|           figure_3.svg
+|           figure_4.svg
+|           figure_5.svg
+|           figure_6.svg
+|           figure_7.svg
+|           
++---env
+|       macEnv.yaml
+|       winNvEnv.yaml
+|       
++---inference_results
+|       multi_lang_enc_fr_dec_gt.csv
+|       multi_lang_enc_fr_dec_pred.csv
+|       multi_lang_enc_it_dec_gt.csv
+|       multi_lang_enc_it_dec_pred.csv
+|       single_lang_enc_fr_dec_gt.csv
+|       single_lang_enc_fr_dec_pred.csv
+|       single_lang_enc_it_dec_gt.csv
+|       single_lang_enc_it_dec_pred.csv
+|       
++---src
+|   |   dataset.py
+|   |   DeepSC_model.py
+|   |   eval.py
+|   |   finetune.py
+|   |   inference.py
+|   |   MINE.py
+|   |   preprocess.py
+|   |   testlib.py
+|   |   train_multiDecoder.py
+|           
++---telemetry_data
+|       04_06_2025_single_language_telemetry_da.csv
+|       04_13_2020_single_language_telemetry_fr.csv
+|       04_13_2025_multi_language_telemetry.csv
+|       04_15_2025_finetune_from_multi_decoder_telemetry.csv
+|       04_15_2025_finetune_from_single_decoder_telemetry.csv
+|       04_15_2025_single_language_telemetry_it.csv
+|       
+\---weights
+    +---04_06_2025__15_07_38
+    |       best.pth
+    |       epoch0.pth
+    |       epoch10.pth
+    |       epoch20.pth
+    |       epoch30.pth
+    |       epoch40.pth
+    |       epoch50.pth
+    |       note.txt
+    |       telemetry.csv
+    |       
+    +---04_13_2025__00_46_19
+    |       best_decoder_da.pth
+    |       best_decoder_es.pth
+    |       best_decoder_fr.pth
+    |       best_encoder.pth
+    |       epoch0_decoder_da.pth
+    |       epoch0_decoder_es.pth
+    |       epoch0_decoder_fr.pth
+    |       epoch0_encoder.pth
+    |       epoch18_decoder_da.pth
+    |       epoch18_decoder_es.pth
+    |       epoch18_decoder_fr.pth
+    |       epoch18_encoder.pth
+    |       epoch27_decoder_da.pth
+    |       epoch27_decoder_es.pth
+    |       epoch27_decoder_fr.pth
+    |       epoch27_encoder.pth
+    |       epoch36_decoder_da.pth
+    |       epoch36_decoder_es.pth
+    |       epoch36_decoder_fr.pth
+    |       epoch36_encoder.pth
+    |       epoch45_decoder_da.pth
+    |       epoch45_decoder_es.pth
+    |       epoch45_decoder_fr.pth
+    |       epoch45_encoder.pth
+    |       epoch54_decoder_da.pth
+    |       epoch54_decoder_es.pth
+    |       epoch54_decoder_fr.pth
+    |       epoch54_encoder.pth
+    |       epoch9_decoder_da.pth
+    |       epoch9_decoder_es.pth
+    |       epoch9_decoder_fr.pth
+    |       epoch9_encoder.pth
+    |       note.txt
+    |       telemetry.csv
+    |       
+    +---04_13_2025__12_36_54
+    |       best_decoder_fr.pth
+    |       best_encoder.pth
+    |       epoch0_decoder_fr.pth
+    |       epoch0_encoder.pth
+    |       epoch12_decoder_fr.pth
+    |       epoch12_encoder.pth
+    |       epoch15_decoder_fr.pth
+    |       epoch15_encoder.pth
+    |       epoch18_decoder_fr.pth
+    |       epoch18_encoder.pth
+    |       epoch21_decoder_fr.pth
+    |       epoch21_encoder.pth
+    |       epoch24_decoder_fr.pth
+    |       epoch24_encoder.pth
+    |       epoch27_decoder_fr.pth
+    |       epoch27_encoder.pth
+    |       epoch30_decoder_fr.pth
+    |       epoch30_encoder.pth
+    |       epoch33_decoder_fr.pth
+    |       epoch33_encoder.pth
+    |       epoch36_decoder_fr.pth
+    |       epoch36_encoder.pth
+    |       epoch3_decoder_fr.pth
+    |       epoch3_encoder.pth
+    |       epoch6_decoder_fr.pth
+    |       epoch6_encoder.pth
+    |       epoch9_decoder_fr.pth
+    |       epoch9_encoder.pth
+    |       note.txt
+    |       telemetry.csv
+    |       
+    +---04_15_2025__23_27_02
+    |       best_decoder_it.pth
+    |       best_encoder.pth
+    |       epoch0_decoder_it.pth
+    |       epoch0_encoder.pth
+    |       epoch10_decoder_it.pth
+    |       epoch10_encoder.pth
+    |       epoch15_decoder_it.pth
+    |       epoch15_encoder.pth
+    |       epoch20_decoder_it.pth
+    |       epoch20_encoder.pth
+    |       epoch25_decoder_it.pth
+    |       epoch25_encoder.pth
+    |       epoch5_decoder_it.pth
+    |       epoch5_encoder.pth
+    |       note.txt
+    |       telemetry.csv
+    |       
+    +---04_16_2025__08_48_50
+    |       best_decoder_it.pth
+    |       best_encoder.pth
+    |       epoch0_decoder_it.pth
+    |       epoch0_encoder.pth
+    |       epoch10_decoder_it.pth
+    |       epoch10_encoder.pth
+    |       epoch15_decoder_it.pth
+    |       epoch15_encoder.pth
+    |       epoch20_decoder_it.pth
+    |       epoch20_encoder.pth
+    |       epoch25_decoder_it.pth
+    |       epoch25_encoder.pth
+    |       epoch5_decoder_it.pth
+    |       epoch5_encoder.pth
+    |       note.txt
+    |       telemetry.csv
+    |       
+    +---04_16_2025__14_05_12
+    |       best_decoder_it.pth
+    |       best_encoder.pth
+    |       epoch0_decoder_it.pth
+    |       epoch0_encoder.pth
+    |       epoch12_decoder_it.pth
+    |       epoch12_encoder.pth
+    |       epoch15_decoder_it.pth
+    |       epoch15_encoder.pth
+    |       epoch18_decoder_it.pth
+    |       epoch18_encoder.pth
+    |       epoch21_decoder_it.pth
+    |       epoch21_encoder.pth
+    |       epoch24_decoder_it.pth
+    |       epoch24_encoder.pth
+    |       epoch27_decoder_it.pth
+    |       epoch27_encoder.pth
+    |       epoch30_decoder_it.pth
+    |       epoch30_encoder.pth
+    |       epoch33_decoder_it.pth
+    |       epoch33_encoder.pth
+    |       epoch36_decoder_it.pth
+    |       epoch36_encoder.pth
+    |       epoch39_decoder_it.pth
+    |       epoch39_encoder.pth
+    |       epoch3_decoder_it.pth
+    |       epoch3_encoder.pth
+    |       epoch42_decoder_it.pth
+    |       epoch42_encoder.pth
+    |       epoch45_decoder_it.pth
+    |       epoch45_encoder.pth
+    |       epoch6_decoder_it.pth
+    |       epoch6_encoder.pth
+    |       epoch9_decoder_it.pth
+    |       epoch9_encoder.pth
+    |       note.txt
+    |       telemetry.csv
+            
