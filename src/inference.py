@@ -24,6 +24,15 @@ parser.add_argument('--trg-lang', default='it', type=str)
 parser.add_argument('--num-sent', default=10, type=int)
 parser.add_argument('--data-dir', default='dataset', type=str)
 
+parser.add_argument('--load-path', default='weights/04_16_2025__14_05_12', type=str)
+parser.add_argument('--enc-name', default='epoch30_encoder.pth', type=str)
+parser.add_argument('--dec-name', default='epoch30_decoder_it.pth', type=str)
+parser.add_argument('--out-label-f', default='inference_results/single_lang_enc_it_dec_gt.csv', type=str)
+parser.add_argument('--out_pred_f', default='inference_results/single_lang_enc_it_dec_pred.csv', type=str)
+
+parser.add_argument('--device', default='cuda:0', type=str)
+# parser.add_argument('--device', default='cpu', type=str)
+
 
 
 def output_pred(labels, pred, ttc1):
@@ -75,14 +84,15 @@ def inference(encoder, decoder, loader, pad_idx, device, src_lang, trg_lang, arg
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
     print("PyTorch Version: ",torch.__version__)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and args.device == 'cuda:0':
         print("Using the GPU!")
     else:
-        print("WARNING: Could not find GPU! Using CPU only.")
+        device = args.device
+        print("Using CPU only.")
 
-    args = parser.parse_args()
     lang_data_dir = os.path.join(args.data_dir, args.src_lang+'-'+args.trg_lang)
 
     collate_fn = partial(collate, maxNumToken=args.MAX_LENGTH, numlang=args.num_lang) 
@@ -103,12 +113,11 @@ if __name__ == "__main__":
                                                 src_seq_len = args.MAX_LENGTH, 
                                                 tgt_seq_len = args.MAX_LENGTH)
 
-    
-    load_path = 'weights/04_16_2025__14_05_12'
-    enc_name = 'epoch30_encoder.pth'
-    dec_name = 'epoch30_decoder_it.pth'
-    out_label_f = 'inference_results/single_lang_enc_it_dec_gt.csv'
-    out_pred_f = 'inference_results/single_lang_enc_it_dec_pred.csv'
+    load_path = args.load_path
+    enc_name = args.enc_name
+    dec_name = args.dec_name
+    out_label_f = args.out_label_f
+    out_pred_f = args.out_pred_f
 
     f_path_enc = os.path.join(load_path, enc_name)
     f_path_dec = os.path.join(load_path, dec_name)

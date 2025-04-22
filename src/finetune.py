@@ -19,9 +19,9 @@ parser.add_argument('--batch-size', default=128, type=int)
 parser.add_argument('--num-lang', default=2, type=int)
 parser.add_argument('--num-epoch', default=30, type=int)
 parser.add_argument('--model-out-dir', default='weights', type=str)
-# parser.add_argument('--src-lang', default='en', type=str)
-# parser.add_argument('--trg-lang', default='da', type=str)
-parser.add_argument('--lang-pairs', default='en-it', type=str) # only put one lang pair for this
+parser.add_argument('--src-lang', default='en', type=str)
+parser.add_argument('--trg-lang', default='da', type=str)
+# parser.add_argument('--lang-pairs', default='en-it', type=str) # only put one lang pair for this
 parser.add_argument('--data-dir', default='dataset', type=str)
 parser.add_argument('--encoder-pth', default='weights/04_13_2025__00_46_19/epoch54_encoder.pth', type=str)
 
@@ -188,15 +188,15 @@ if __name__ == '__main__':
     os.makedirs(cur_dir)
 
     #prepare dataloaders for each languages
-    lang_pairs = args.lang_pairs.split('_')
-    split_languages = [lang_pair.split('-') for lang_pair in lang_pairs]
-    split_languages = [item for sublist in split_languages for item in sublist]
-    split_languages = set(split_languages)
-    src_lang = find_src_lang(lang_pairs)
-    split_languages.remove(src_lang)
-    trg_langs = list(split_languages)
-    # src_langs = ["en"]
-    # trg_langs = ['it']
+    # lang_pairs = args.lang_pairs.split('_')
+    # split_languages = [lang_pair.split('-') for lang_pair in lang_pairs]
+    # split_languages = [item for sublist in split_languages for item in sublist]
+    # split_languages = set(split_languages)
+    # src_lang = find_src_lang(lang_pairs)
+    # split_languages.remove(src_lang)
+    # trg_langs = list(split_languages)
+    src_lang = args.src_lang
+    trg_langs = args.trg_langs
     langs = [src_lang] + trg_langs
     num_trg_langs = len(trg_langs)
 
